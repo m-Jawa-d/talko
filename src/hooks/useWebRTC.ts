@@ -1,9 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getIceServers } from "@/types";
+import {
+  candidateType,
+  fetchIceServers,
+  iceServersHaveTurn,
+} from "@/lib/iceServers";
 
-const CONNECT_TIMEOUT_MS = 25_000;
+const CONNECT_TIMEOUT_MS = 35_000;
 
 export type CallFailureReason =
   | "failed"
@@ -86,20 +90,35 @@ export function useWebRTC({ onIceCandidate, onCallFailed }: UseWebRTCOptions) {
     }, CONNECT_TIMEOUT_MS);
   }, [clearConnectTimer, reportFailure]);
 
-  const ensurePeerConnection = useCallback(() => {
+  const ensurePeerConnection = useCallback(async () => {
     if (pcRef.current) return pcRef.current;
 
-    const iceServers = getIceServers();
+    const iceServers = await fetchIceServers();
     const pc = new RTCPeerConnection({ iceServers });
+    const gathered = { host: 0, srflx: 0, relay: 0, other: 0 };
+
     console.log("[webrtc] peer connection created", {
-      turnConfigured: iceServers.some((s) =>
-        String(s.urls).includes("turn:")
-      ),
+      turnConfigured: iceServersHaveTurn(iceServers),
+      iceServerCount: iceServers.length,
     });
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
+        const kind = candidateType(event.candidate.candidate);
+        if (kind in gathered) {
+          gathered[kind as keyof typeof gathered] += 1;
+        } else {
+          gathered.other += 1;
+        }
+        console.log(`[webrtc] local ICE candidate (${kind})`);
         onIceCandidateRef.current(event.candidate.toJSON());
+      } else {
+        console.log("[webrtc] ICE gathering complete", gathered);
+        if (iceServersHaveTurn(iceServers) && gathered.relay === 0) {
+          console.error(
+            "[webrtc] TURN is configured but no relay candidates were gathered — check Metered username/credential (or paste iceServers from Instructions)"
+          );
+        }
       }
     };
 
@@ -195,7 +214,7 @@ export function useWebRTC({ onIceCandidate, onCallFailed }: UseWebRTCOptions) {
   }, []);
 
   const createOffer = useCallback(async () => {
-    const pc = ensurePeerConnection();
+    const pc = await ensurePeerConnection();
     await attachLocalTracks(pc);
     setIsInCall(true);
     startConnectWatch();
@@ -207,7 +226,7 @@ export function useWebRTC({ onIceCandidate, onCallFailed }: UseWebRTCOptions) {
 
   const handleOffer = useCallback(
     async (sdp: RTCSessionDescriptionInit) => {
-      const pc = ensurePeerConnection();
+      const pc = await ensurePeerConnection();
       await attachLocalTracks(pc);
       setIsInCall(true);
       startConnectWatch();
