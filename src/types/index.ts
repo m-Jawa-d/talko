@@ -39,10 +39,33 @@ export const LANGUAGE_LEVELS: LanguageLevel[] = [
   "C2",
 ];
 
-export const STUN_SERVERS: RTCIceServer[] = [
-  { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" },
-];
+/** Google STUN + Metered Open Relay TURN (when env credentials are set). */
+export function getIceServers(): RTCIceServer[] {
+  const servers: RTCIceServer[] = [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+    { urls: "stun:stun.relay.metered.ca:80" },
+  ];
+
+  const username = process.env.NEXT_PUBLIC_TURN_USERNAME;
+  const credential = process.env.NEXT_PUBLIC_TURN_CREDENTIAL;
+
+  if (username && credential) {
+    const auth = { username, credential };
+    servers.push(
+      { urls: "turn:global.relay.metered.ca:80", ...auth },
+      { urls: "turn:global.relay.metered.ca:80?transport=tcp", ...auth },
+      { urls: "turn:global.relay.metered.ca:443", ...auth },
+      { urls: "turns:global.relay.metered.ca:443?transport=tcp", ...auth }
+    );
+  } else if (typeof window !== "undefined") {
+    console.warn(
+      "[webrtc] NEXT_PUBLIC_TURN_USERNAME / NEXT_PUBLIC_TURN_CREDENTIAL missing — cross-network calls may fail"
+    );
+  }
+
+  return servers;
+}
 
 export const LOBBY_CHANNEL = "talko-lobby";
 export const PROFILE_STORAGE_KEY = "talko.profile.v1";

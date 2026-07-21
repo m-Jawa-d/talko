@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { STUN_SERVERS } from "@/types";
+import { getIceServers } from "@/types";
 
 const CONNECT_TIMEOUT_MS = 25_000;
 
@@ -89,8 +89,13 @@ export function useWebRTC({ onIceCandidate, onCallFailed }: UseWebRTCOptions) {
   const ensurePeerConnection = useCallback(() => {
     if (pcRef.current) return pcRef.current;
 
-    const pc = new RTCPeerConnection({ iceServers: STUN_SERVERS });
-    console.log("[webrtc] peer connection created");
+    const iceServers = getIceServers();
+    const pc = new RTCPeerConnection({ iceServers });
+    console.log("[webrtc] peer connection created", {
+      turnConfigured: iceServers.some((s) =>
+        String(s.urls).includes("turn:")
+      ),
+    });
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
