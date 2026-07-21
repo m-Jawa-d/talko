@@ -5,29 +5,36 @@ const GOOGLE_STUN: RTCIceServer[] = [
   { urls: "stun:stun1.l.google.com:19302" },
 ];
 
-/** Metered static-credential hosts (from their Instructions panel). */
+/** Metered static-credential hosts (Instructions panel — often standard.relay). */
 function meteredStaticServers(
   username: string,
   credential: string
 ): RTCIceServer[] {
   const auth = { username, credential };
-  return [
-    { urls: "stun:stun.relay.metered.ca:80" },
-    { urls: "turn:global.relay.metered.ca:80", ...auth },
-    { urls: "turn:global.relay.metered.ca:80?transport=tcp", ...auth },
-    { urls: "turn:global.relay.metered.ca:443", ...auth },
-    { urls: "turns:global.relay.metered.ca:443?transport=tcp", ...auth },
-  ];
+  const hosts = ["standard.relay.metered.ca", "global.relay.metered.ca"];
+  const servers: RTCIceServer[] = [{ urls: "stun:stun.relay.metered.ca:80" }];
+  for (const host of hosts) {
+    servers.push(
+      { urls: `turn:${host}:80`, ...auth },
+      { urls: `turn:${host}:80?transport=tcp`, ...auth },
+      { urls: `turn:${host}:443`, ...auth },
+      { urls: `turns:${host}:443?transport=tcp`, ...auth }
+    );
+  }
+  return servers;
 }
 
 function parseIceServersJson(raw: string | undefined): RTCIceServer[] | null {
   if (!raw?.trim()) return null;
+  // .env values must be one-line valid JSON (quoted keys). Multi-line JS objects fail.
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed) || parsed.length === 0) return null;
     return parsed as RTCIceServer[];
   } catch {
-    console.error("[webrtc] NEXT_PUBLIC_TURN_ICE_SERVERS is invalid JSON");
+    console.error(
+      "[webrtc] NEXT_PUBLIC_TURN_ICE_SERVERS is invalid JSON — use one line with quoted keys, e.g. [{\"urls\":\"stun:...\"},...]"
+    );
     return null;
   }
 }
