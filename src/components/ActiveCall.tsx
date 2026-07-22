@@ -1,13 +1,21 @@
 "use client";
 
-import { Mic, MicOff, PhoneOff, WifiOff } from "lucide-react";
+import { Mic, MicOff, PhoneOff, RefreshCw, WifiOff } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AudioWaveform } from "@/components/AudioWaveform";
 import type { CallFailureReason } from "@/hooks/useWebRTC";
+import {
+  CONVERSATION_PROMPTS,
+  ConversationPrompt,
+  pickRandomPrompt,
+} from "@/lib/prompts";
+import { getRoom, promptsForRoom } from "@/lib/rooms";
+import { RoomId } from "@/types";
 
 interface ActiveCallProps {
   peerName: string;
   peerLevel?: string;
+  roomId?: RoomId;
   localStream: MediaStream | null;
   remoteStream: MediaStream | null;
   connectionState: RTCPeerConnectionState;
@@ -15,8 +23,10 @@ interface ActiveCallProps {
   isMuted: boolean;
   onToggleMute: () => void;
   onEndCall: () => void;
+  onPromptChange?: (prompt: ConversationPrompt) => void;
   preview?: boolean;
   previewSeconds?: number;
+  previewPrompt?: ConversationPrompt;
 }
 
 function formatTime(total: number) {
@@ -70,6 +80,7 @@ function failureCopy(reason: CallFailureReason | null | undefined) {
 export function ActiveCall({
   peerName,
   peerLevel,
+  roomId = "open",
   localStream,
   remoteStream,
   connectionState,
@@ -77,12 +88,29 @@ export function ActiveCall({
   isMuted,
   onToggleMute,
   onEndCall,
+  onPromptChange,
   preview = false,
   previewSeconds = 95,
+  previewPrompt,
 }: ActiveCallProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [seconds, setSeconds] = useState(preview ? previewSeconds : 0);
+  const promptPool = useMemo(
+    () => promptsForRoom(CONVERSATION_PROMPTS, roomId),
+    [roomId]
+  );
+  const room = getRoom(roomId);
+  const [prompt, setPrompt] = useState<ConversationPrompt>(() =>
+    previewPrompt ?? pickRandomPrompt(null, promptPool)
+  );
   const peerInitials = useMemo(() => initials(peerName) || "•", [peerName]);
+  const onPromptChangeRef = useRef(onPromptChange);
+  onPromptChangeRef.current = onPromptChange;
+
+  useEffect(() => {
+    if (preview) return;
+    onPromptChangeRef.current?.(prompt);
+  }, [prompt, preview]);
 
   useEffect(() => {
     if (preview) return;
@@ -97,6 +125,11 @@ export function ActiveCall({
     const id = window.setInterval(() => setSeconds((n) => n + 1), 1000);
     return () => window.clearInterval(id);
   }, [preview]);
+
+  const nextPrompt = () => {
+    if (preview) return;
+    setPrompt((current) => pickRandomPrompt(current.id, promptPool));
+  };
 
   const connected = connectionState === "connected";
   const failed = Boolean(failureReason) || connectionState === "failed";
@@ -189,7 +222,7 @@ export function ActiveCall({
               </div>
 
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-teal-700 dark:text-teal-300">
-                Live call
+                {room.name}
               </p>
               <h2 className="mt-3 font-[family-name:var(--font-display)] text-4xl font-semibold tracking-tight text-stone-900 sm:text-5xl dark:text-stone-50">
                 {peerName}
@@ -211,6 +244,28 @@ export function ActiveCall({
                   tone="peer"
                   size="lg"
                 />
+              </div>
+
+              <div className="mt-6 w-full max-w-lg rounded-[1.5rem] bg-[var(--page-surface)]/80 px-5 py-4 ring-1 ring-[var(--page-border)] backdrop-blur-md">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-teal-700 dark:text-teal-300">
+                      Talk about · {prompt.topic}
+                    </p>
+                    <p className="mt-1.5 text-sm leading-relaxed text-stone-700 dark:text-stone-200">
+                      {prompt.text}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={nextPrompt}
+                    tabIndex={preview ? -1 : undefined}
+                    aria-label="Next prompt"
+                    className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-stone-500 ring-1 ring-[var(--page-border)] transition hover:bg-stone-100 hover:text-stone-800 dark:text-stone-400 dark:hover:bg-white/10 dark:hover:text-stone-100"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
 
               {!preview ? <audio ref={audioRef} autoPlay playsInline /> : null}

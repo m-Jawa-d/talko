@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActiveCall } from "@/components/ActiveCall";
+import { CallFeedback } from "@/components/CallFeedback";
 import { ConfigMissing } from "@/components/ConfigMissing";
 import { IncomingCall } from "@/components/IncomingCall";
 import { PracticeLobby } from "@/components/PracticeLobby";
@@ -12,10 +13,31 @@ import { SiteFooter, SiteHeader, SiteNavPill } from "@/components/SiteHeader";
 import { useLobby } from "@/hooks/useLobby";
 import { useProfile } from "@/hooks/useProfile";
 import { useWebRTC } from "@/hooks/useWebRTC";
+import { loadHistory, saveHistoryEntry } from "@/lib/history";
+import { pickPartner } from "@/lib/levels";
+import { getRoom, loadRoomId, saveRoomId } from "@/lib/rooms";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { PresenceUser, SignalPayload } from "@/types";
+import {
+  CallHistoryEntry,
+  CallRatingTag,
+  LanguageLevel,
+  PresenceUser,
+  RoomId,
+  SignalPayload,
+} from "@/types";
 
 type Phase = "idle" | "looking" | "outgoing" | "incoming" | "active";
+
+interface PendingFeedback {
+  peerId: string;
+  peerName: string;
+  peerLevel: LanguageLevel;
+  durationSeconds: number;
+  prompt?: string;
+  roomId: RoomId;
+}
+
+const MIN_FEEDBACK_SECONDS = 20;
 
 export function PracticeApp() {
   const { profile, hydrated, updateProfile, resetProfile } = useProfile();
@@ -23,12 +45,28 @@ export function PracticeApp() {
   const [peer, setPeer] = useState<PresenceUser | null>(null);
   const [incoming, setIncoming] = useState<PresenceUser | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
+  const [history, setHistory] = useState<CallHistoryEntry[]>([]);
+  const [roomId, setRoomId] = useState<RoomId>("open");
+  const [pendingFeedback, setPendingFeedback] = useState<PendingFeedback | null>(
+    null
+  );
   const [configured] = useState(() => isSupabaseConfigured());
 
   const peerIdRef = useRef<string | null>(null);
   const lookingTimerRef = useRef<number | null>(null);
   const matchedRef = useRef(false);
   const phaseRef = useRef<Phase>("idle");
+  const callStartedAtRef = useRef<number | null>(null);
+  const callConnectedRef = useRef(false);
+  const lastPromptRef = useRef<string | undefined>(undefined);
+  const roomIdRef = useRef<RoomId>(roomId);
+  const peerSnapshotRef = useRef<{
+    id: string;
+    displayName: string;
+    level: LanguageLevel;
+  } | null>(null);
+
+  roomIdRef.current = roomId;
 
   const sendSignalRef = useRef<
     (payload: Omit<SignalPayload, "from">) => Promise<void>
@@ -54,11 +92,23 @@ export function PracticeApp() {
     async () => undefined
   );
 
+  useEffect(() => {
+    setHistory(loadHistory());
+    setRoomId(loadRoomId());
+  }, []);
+
+  const handleRoomChange = (next: RoomId) => {
+    if (phaseRef.current !== "idle") return;
+    setRoomId(next);
+    saveRoomId(next);
+    setBanner(null);
+  };
+
   const clearLookingTimer = useCallback(() => {
     if (lookingTimerRef.current) {
       window.clearTimeout(lookingTimerRef.current);
-      lookingTimerRef.current = null;
     }
+    lookingTimerRef.current = null;
   }, []);
 
   const setPhaseSafe = useCallback((next: Phase) => {
@@ -66,17 +116,49 @@ export function PracticeApp() {
     setPhase(next);
   }, []);
 
-  const resetCallUi = useCallback(async () => {
-    clearLookingTimer();
-    matchedRef.current = false;
-    hangUpRef.current();
-    peerIdRef.current = null;
-    setPeer(null);
-    setIncoming(null);
-    setPhaseSafe("idle");
-    setBanner(null);
-    await setPresenceRef.current("Online");
-  }, [clearLookingTimer, setPhaseSafe]);
+  const buildFeedbackIfNeeded = useCallback((): PendingFeedback | null => {
+    const snap = peerSnapshotRef.current;
+    const started = callStartedAtRef.current;
+    if (!snap || !started || !callConnectedRef.current) return null;
+    const durationSeconds = Math.max(
+      0,
+      Math.round((Date.now() - started) / 1000)
+    );
+    if (durationSeconds < MIN_FEEDBACK_SECONDS) return null;
+    return {
+      peerId: snap.id,
+      peerName: snap.displayName,
+      peerLevel: snap.level,
+      durationSeconds,
+      prompt: lastPromptRef.current,
+      roomId: roomIdRef.current,
+    };
+  }, []);
+
+  const resetCallUi = useCallback(
+    async (opts?: { offerFeedback?: boolean }) => {
+      const feedback =
+        opts?.offerFeedback !== false ? buildFeedbackIfNeeded() : null;
+
+      clearLookingTimer();
+      matchedRef.current = false;
+      hangUpRef.current();
+      peerIdRef.current = null;
+      callStartedAtRef.current = null;
+      callConnectedRef.current = false;
+      lastPromptRef.current = undefined;
+      peerSnapshotRef.current = null;
+      setPeer(null);
+      setIncoming(null);
+      setPhaseSafe("idle");
+      setBanner(null);
+      await setPresenceRef.current("Online");
+
+      if (feedback) setPendingFeedback(feedback);
+      return feedback;
+    },
+    [buildFeedbackIfNeeded, clearLookingTimer, setPhaseSafe]
+  );
 
   const webrtc = useWebRTC({
     onIceCandidate: (candidate) => {
@@ -103,6 +185,22 @@ export function PracticeApp() {
   handleAnswerRef.current = webrtc.handleAnswer;
   handleIceRef.current = webrtc.handleRemoteIceCandidate;
 
+  useEffect(() => {
+    if (phase !== "active") return;
+    if (webrtc.connectionState === "connected" && !callConnectedRef.current) {
+      callConnectedRef.current = true;
+      callStartedAtRef.current = Date.now();
+    }
+  }, [phase, webrtc.connectionState]);
+
+  const rememberPeer = useCallback((user: PresenceUser) => {
+    peerSnapshotRef.current = {
+      id: user.id,
+      displayName: user.displayName,
+      level: user.level,
+    };
+  }, []);
+
   const onSignal = useCallback(
     async (signal: SignalPayload) => {
       switch (signal.type) {
@@ -117,6 +215,7 @@ export function PracticeApp() {
           }
           clearLookingTimer();
           matchedRef.current = true;
+          rememberPeer(signal.from);
           setIncoming(signal.from);
           setPeer(signal.from);
           peerIdRef.current = signal.from.id;
@@ -126,6 +225,7 @@ export function PracticeApp() {
         }
         case "call-accept": {
           peerIdRef.current = signal.from.id;
+          rememberPeer(signal.from);
           setPeer(signal.from);
           setPhaseSafe("active");
           setBanner(null);
@@ -146,25 +246,27 @@ export function PracticeApp() {
                 ? "Microphone permission is required to start a call."
                 : "Couldn’t start the call. Check your microphone and try again.";
             setBanner(msg);
-            await resetCallUi();
+            await resetCallUi({ offerFeedback: false });
           }
           break;
         }
         case "call-decline": {
           setBanner(`${signal.from.displayName} declined the call.`);
-          await resetCallUi();
+          await resetCallUi({ offerFeedback: false });
           break;
         }
         case "call-end": {
-          if (phaseRef.current === "active") {
+          const wasActive = phaseRef.current === "active";
+          const feedback = await resetCallUi();
+          if (wasActive && !feedback) {
             setBanner("The other person left the call.");
           }
-          await resetCallUi();
           break;
         }
         case "webrtc-offer": {
           if (!signal.sdp) return;
           peerIdRef.current = signal.from.id;
+          rememberPeer(signal.from);
           setPhaseSafe("active");
           await setPresenceRef.current("In Call");
           try {
@@ -183,7 +285,7 @@ export function PracticeApp() {
                 ? "Microphone permission is required to join the call."
                 : "Couldn’t join the call. Check your microphone and try again.";
             setBanner(msg);
-            await resetCallUi();
+            await resetCallUi({ offerFeedback: false });
           }
           break;
         }
@@ -199,11 +301,12 @@ export function PracticeApp() {
         }
       }
     },
-    [clearLookingTimer, resetCallUi, setPhaseSafe]
+    [clearLookingTimer, rememberPeer, resetCallUi, setPhaseSafe]
   );
 
   const lobby = useLobby({
     profile,
+    roomId,
     enabled: Boolean(profile) && configured,
     onSignal,
   });
@@ -216,6 +319,7 @@ export function PracticeApp() {
     clearLookingTimer();
     matchedRef.current = true;
     peerIdRef.current = user.id;
+    rememberPeer(user);
     setPeer(user);
     setPhaseSafe("outgoing");
     setBanner(`Calling ${user.displayName}…`);
@@ -225,35 +329,33 @@ export function PracticeApp() {
 
   const tryMatch = useCallback(async () => {
     if (matchedRef.current) return;
+    const meId = profile?.id;
+    const myLevel = profile?.level;
+    if (!meId || !myLevel) return;
+
     const candidates = lobby.users.filter(
       (u) => u.status === "Looking" || u.status === "Online"
     );
-    // Prefer others who are also looking; fall back to any online
-    const looking = candidates.filter((u) => u.status === "Looking");
-    const pool = looking.length > 0 ? looking : candidates;
-    if (pool.length === 0) return;
-
-    // Deterministic pairing: lower id invites to avoid double-call races when both looking
-    const meId = profile?.id;
-    if (!meId) return;
-
-    const partner = pool[Math.floor(Math.random() * pool.length)];
+    const partner = pickPartner(candidates, myLevel, meId);
     if (!partner) return;
-
-    if (partner.status === "Looking" && partner.id < meId) {
-      // Let the other peer initiate
-      return;
-    }
 
     matchedRef.current = true;
     clearLookingTimer();
     peerIdRef.current = partner.id;
+    rememberPeer(partner);
     setPeer(partner);
     setPhaseSafe("outgoing");
     setBanner(`Matched with ${partner.displayName}…`);
     await lobby.setPresenceStatus("Busy");
     await lobby.sendSignal({ type: "call-invite", toId: partner.id });
-  }, [lobby, profile?.id, clearLookingTimer, setPhaseSafe]);
+  }, [
+    lobby,
+    profile?.id,
+    profile?.level,
+    clearLookingTimer,
+    rememberPeer,
+    setPhaseSafe,
+  ]);
 
   useEffect(() => {
     if (phase !== "looking") return;
@@ -264,12 +366,14 @@ export function PracticeApp() {
     if (!lobby.ready || phase !== "idle") return;
     matchedRef.current = false;
     setPhaseSafe("looking");
-    setBanner("Looking for a partner…");
+    setBanner(
+      `Looking in ${getRoom(roomId).name} for a partner near your level…`
+    );
     await lobby.setPresenceStatus("Looking");
 
     lookingTimerRef.current = window.setTimeout(() => {
       if (!matchedRef.current) {
-        setBanner("No partner found yet. Stay online or try again.");
+        setBanner("No partner found yet. Stay online or try another room.");
         void lobby.setPresenceStatus("Online");
         setPhaseSafe("idle");
       }
@@ -286,6 +390,7 @@ export function PracticeApp() {
 
   const handleAccept = async () => {
     if (!incoming) return;
+    rememberPeer(incoming);
     setIncoming(null);
     setPhaseSafe("active");
     await lobby.setPresenceStatus("In Call");
@@ -295,7 +400,7 @@ export function PracticeApp() {
   const handleDecline = async () => {
     if (!incoming) return;
     await lobby.sendSignal({ type: "call-decline", toId: incoming.id });
-    await resetCallUi();
+    await resetCallUi({ offerFeedback: false });
   };
 
   const handleEndCall = async () => {
@@ -304,12 +409,46 @@ export function PracticeApp() {
     if (toId) {
       await lobby.sendSignal({ type: "call-end", toId });
     }
-    await resetCallUi();
+    await resetCallUi({ offerFeedback: !failed });
     if (failed) {
       setBanner(
         "Call couldn’t connect. Try again — different networks sometimes block audio until TURN is set up."
       );
     }
+  };
+
+  const persistFeedback = (input: {
+    ratings: CallRatingTag[];
+    note: string;
+  }) => {
+    if (!pendingFeedback) return;
+    const next = saveHistoryEntry({
+      peerId: pendingFeedback.peerId,
+      peerName: pendingFeedback.peerName,
+      peerLevel: pendingFeedback.peerLevel,
+      durationSeconds: pendingFeedback.durationSeconds,
+      ratings: input.ratings,
+      note: input.note,
+      prompt: pendingFeedback.prompt,
+      roomId: pendingFeedback.roomId,
+    });
+    setHistory(next);
+    setPendingFeedback(null);
+  };
+
+  const skipFeedback = () => {
+    if (!pendingFeedback) return;
+    const next = saveHistoryEntry({
+      peerId: pendingFeedback.peerId,
+      peerName: pendingFeedback.peerName,
+      peerLevel: pendingFeedback.peerLevel,
+      durationSeconds: pendingFeedback.durationSeconds,
+      ratings: [],
+      prompt: pendingFeedback.prompt,
+      roomId: pendingFeedback.roomId,
+    });
+    setHistory(next);
+    setPendingFeedback(null);
   };
 
   if (!hydrated) {
@@ -358,7 +497,11 @@ export function PracticeApp() {
 
   return (
     <div className="relative flex min-h-[100dvh] flex-col bg-[var(--page-bg)]">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_45%_at_0%_0%,var(--accent-soft),transparent_55%),radial-gradient(ellipse_50%_40%_at_100%_20%,rgba(120,113,108,0.06),transparent_50%)] dark:bg-[radial-gradient(ellipse_70%_45%_at_0%_0%,var(--accent-soft),transparent_55%),radial-gradient(ellipse_50%_40%_at_100%_10%,rgba(255,255,255,0.03),transparent_50%)]" />
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -left-24 top-[-10%] h-[55vh] w-[55vh] rounded-full bg-teal-400/15 blur-3xl animate-[call-orb_16s_ease-in-out_infinite_alternate] dark:bg-teal-400/10" />
+        <div className="absolute -right-20 bottom-[-8%] h-[45vh] w-[45vh] rounded-full bg-sky-400/10 blur-3xl animate-[call-orb_18s_ease-in-out_infinite_alternate-reverse] dark:bg-sky-400/8" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_30%,var(--page-bg)_78%)]" />
+      </div>
 
       <div className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 flex-col px-6 pt-7 sm:px-10 lg:px-12">
         <SiteHeader
@@ -372,7 +515,7 @@ export function PracticeApp() {
               </Link>
               <SiteNavPill
                 onClick={() => {
-                  void resetCallUi();
+                  void resetCallUi({ offerFeedback: false });
                   resetProfile();
                 }}
               >
@@ -382,17 +525,20 @@ export function PracticeApp() {
           }
         />
 
-        <main className="flex flex-1 flex-col justify-center py-14 lg:py-10">
+        <main className="flex flex-1 flex-col py-8 sm:py-12">
           <PracticeLobby
             profile={profile}
+            roomId={roomId}
             statusLabel={statusLabel}
             ready={lobby.ready}
             phase={
               phase === "looking" || phase === "outgoing" ? phase : "idle"
             }
             users={lobby.users}
+            history={history}
             error={lobby.error}
             banner={banner}
+            onRoomChange={handleRoomChange}
             onFindPartner={() => void handleFindPartner()}
             onCancelLooking={() => void cancelLooking()}
             onCancelOutgoing={() => void handleEndCall()}
@@ -415,6 +561,7 @@ export function PracticeApp() {
         <ActiveCall
           peerName={peer.displayName}
           peerLevel={peer.level}
+          roomId={roomId}
           localStream={webrtc.localStream}
           remoteStream={webrtc.remoteStream}
           connectionState={webrtc.connectionState}
@@ -422,6 +569,19 @@ export function PracticeApp() {
           isMuted={webrtc.isMuted}
           onToggleMute={webrtc.toggleMute}
           onEndCall={() => void handleEndCall()}
+          onPromptChange={(p) => {
+            lastPromptRef.current = p.text;
+          }}
+        />
+      ) : null}
+
+      {pendingFeedback ? (
+        <CallFeedback
+          peerName={pendingFeedback.peerName}
+          peerLevel={pendingFeedback.peerLevel}
+          durationSeconds={pendingFeedback.durationSeconds}
+          onSubmit={persistFeedback}
+          onSkip={skipFeedback}
         />
       ) : null}
     </div>

@@ -39,5 +39,30 @@ export const LANGUAGE_LEVELS: LanguageLevel[] = [
   "C2",
 ];
 
-export const LOBBY_CHANNEL = "talko-lobby";
+export type CallRatingTag = "helpful" | "clear" | "kind";
+
+export type RoomId =
+  | "open"
+  | "daily"
+  | "travel"
+  | "work"
+  | "opinions"
+  | "hobbies"
+  | "culture"
+  | "tech";
+
+export interface CallHistoryEntry {
+  id: string;
+  peerId: string;
+  peerName: string;
+  peerLevel: LanguageLevel;
+  durationSeconds: number;
+  endedAt: string;
+  ratings: CallRatingTag[];
+  note?: string;
+  prompt?: string;
+  roomId?: RoomId;
+}
+
 export const PROFILE_STORAGE_KEY = "talko.profile.v1";
+export const HISTORY_STORAGE_KEY = "talko.history.v1";

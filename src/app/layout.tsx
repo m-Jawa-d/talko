@@ -13,10 +13,43 @@ const display = Fraunces({
   variable: "--font-display",
 });
 
+const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  (process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : "http://localhost:3000");
+
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: "Talko — Practice English with real people",
   description:
-    "Live 1-on-1 English audio practice. Find a partner or call learners online.",
+    "Live 1-on-1 English audio practice with real learners. Find a partner instantly, or call someone online — no account required.",
+  icons: {
+    icon: [{ url: "/icon.png", type: "image/png" }],
+    apple: [{ url: "/icon.png", type: "image/png" }],
+  },
+  openGraph: {
+    title: "Talko — Practice English with real people",
+    description:
+      "Live 1-on-1 English audio practice with real learners. Find a partner instantly, or call someone online — no account required.",
+    images: [
+      {
+        url: "/og.png",
+        width: 1200,
+        height: 630,
+        alt: "Talko — Speak with real people",
+      },
+    ],
+    type: "website",
+    siteName: "Talko",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Talko — Practice English with real people",
+    description:
+      "Live 1-on-1 English audio practice with real learners. No account required.",
+    images: ["/og.png"],
+  },
 };
 
 const themeInitScript = `

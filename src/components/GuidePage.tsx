@@ -54,13 +54,14 @@ const steps = [
   {
     n: "02",
     title: "Find or call a partner",
-    body: "Tap Find a partner for a random match, or call someone from the live Online list.",
+    body: "Choose a topic, tap Find a partner, or call someone who’s already online.",
     preview: (
-      <UiPreviewFrame scale={0.48}>
-        <div className="w-[980px] rounded-2xl bg-[var(--page-bg)]">
+      <UiPreviewFrame scale={0.58}>
+        <div className="w-[640px] rounded-2xl bg-[var(--page-bg)]">
           <PracticeLobby
             preview
             profile={demoProfile}
+            roomId="travel"
             statusLabel="Online"
             ready
             phase="idle"
@@ -90,7 +91,7 @@ const steps = [
   {
     n: "04",
     title: "Practice, mute, or end",
-    body: "Speak freely. Use mute anytime, and End call when you’re done — both of you return to Online.",
+    body: "Speak freely, tap for a new conversation prompt if you need a topic, then End call when you’re done.",
     preview: (
       <UiPreviewFrame scale={0.42}>
         <div className="h-[760px] w-[720px] overflow-hidden rounded-2xl">
@@ -98,6 +99,7 @@ const steps = [
             preview
             peerName={demoPeer.displayName}
             peerLevel={demoPeer.level}
+            roomId="travel"
             localStream={null}
             remoteStream={null}
             connectionState="connected"

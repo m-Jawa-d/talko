@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
+export { SiteFooter } from "@/components/SiteFooter";
+
 interface SiteHeaderProps {
   action?: React.ReactNode;
 }
@@ -48,23 +50,5 @@ export function SiteNavPill({
     <button type="button" onClick={onClick} className={className}>
       {children}
     </button>
-  );
-}
-
-export function SiteFooter() {
-  return (
-    <footer className="relative z-10 mt-auto w-full border-t border-[var(--page-border)] bg-[var(--page-surface)]/90 py-5 backdrop-blur-md">
-      <div className="mx-auto flex max-w-6xl flex-col items-center justify-center gap-2 px-6 sm:flex-row sm:gap-6">
-        <p className="text-center text-sm text-stone-500 dark:text-stone-400">
-          Live English practice · peer-to-peer audio · private 1-on-1 calls
-        </p>
-        <Link
-          href="/guide"
-          className="text-sm font-medium text-stone-600 underline-offset-4 transition hover:text-stone-900 hover:underline dark:text-stone-400 dark:hover:text-stone-100"
-        >
-          How it works
-        </Link>
-      </div>
-    </footer>
   );
 }

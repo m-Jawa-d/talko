@@ -2,11 +2,12 @@
 
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { roomChannelName } from "@/lib/rooms";
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
 import {
-  LOBBY_CHANNEL,
   PresenceStatus,
   PresenceUser,
+  RoomId,
   SignalPayload,
   UserProfile,
 } from "@/types";
@@ -23,11 +24,12 @@ function presenceList(state: Record<string, PresenceUser[]>): PresenceUser[] {
 
 interface UseLobbyOptions {
   profile: UserProfile | null;
+  roomId: RoomId;
   enabled: boolean;
   onSignal: (payload: SignalPayload) => void;
 }
 
-export function useLobby({ profile, enabled, onSignal }: UseLobbyOptions) {
+export function useLobby({ profile, roomId, enabled, onSignal }: UseLobbyOptions) {
   const [users, setUsers] = useState<PresenceUser[]>([]);
   const [status, setStatus] = useState<PresenceStatus>("Online");
   const [ready, setReady] = useState(false);
@@ -96,7 +98,8 @@ export function useLobby({ profile, enabled, onSignal }: UseLobbyOptions) {
 
     let cancelled = false;
     const supabase = getSupabase();
-    const channel = supabase.channel(LOBBY_CHANNEL, {
+    const channelName = roomChannelName(roomId);
+    const channel = supabase.channel(channelName, {
       config: {
         presence: { key: profile.id },
         broadcast: { self: false },
@@ -104,6 +107,10 @@ export function useLobby({ profile, enabled, onSignal }: UseLobbyOptions) {
     });
 
     channelRef.current = channel;
+    setReady(false);
+    setUsers([]);
+    setStatus("Online");
+    statusRef.current = "Online";
 
     channel
       .on("presence", { event: "sync" }, () => {
@@ -121,7 +128,7 @@ export function useLobby({ profile, enabled, onSignal }: UseLobbyOptions) {
           setError(null);
           setReady(true);
           await trackPresence("Online");
-          console.log("[lobby] joined", profile.id);
+          console.log("[lobby] joined", channelName, profile.id);
           return;
         }
 
@@ -138,7 +145,7 @@ export function useLobby({ profile, enabled, onSignal }: UseLobbyOptions) {
       void supabase.removeChannel(channel);
       channelRef.current = null;
     };
-  }, [enabled, profile, trackPresence]);
+  }, [enabled, profile, roomId, trackPresence]);
 
   const others = users.filter((u) => u.id !== profile?.id);
 
