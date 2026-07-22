@@ -21,17 +21,17 @@ const siteUrl =
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: "Talko — Practice English with real people",
+  title: "Talko — Practice any language with real people",
   description:
-    "Live 1-on-1 English audio practice with real learners. Find a partner instantly, or call someone online — no account required.",
+    "Live 1-on-1 language audio practice with real learners. Find a partner instantly, or call someone online — no account required.",
   icons: {
     icon: [{ url: "/icon.png", type: "image/png" }],
     apple: [{ url: "/icon.png", type: "image/png" }],
   },
   openGraph: {
-    title: "Talko — Practice English with real people",
+    title: "Talko — Practice any language with real people",
     description:
-      "Live 1-on-1 English audio practice with real learners. Find a partner instantly, or call someone online — no account required.",
+      "Live 1-on-1 language audio practice with real learners. Find a partner instantly, or call someone online — no account required.",
     images: [
       {
         url: "/og.png",
@@ -45,9 +45,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Talko — Practice English with real people",
+    title: "Talko — Practice any language with real people",
     description:
-      "Live 1-on-1 English audio practice with real learners. No account required.",
+      "Live 1-on-1 language audio practice with real learners. No account required.",
     images: ["/og.png"],
   },
 };

@@ -1,11 +1,24 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { LANGUAGE_LEVELS, LanguageLevel, UserProfile } from "@/types";
+import {
+  DEFAULT_LEARNING_LANGUAGE,
+  LEARNING_LANGUAGES,
+} from "@/lib/languages";
+import {
+  LANGUAGE_LEVELS,
+  LanguageLevel,
+  LearningLanguage,
+  UserProfile,
+} from "@/types";
 
 interface ProfileSetupProps {
   initial?: UserProfile | null;
-  onSave: (input: { displayName: string; level: LanguageLevel }) => void;
+  onSave: (input: {
+    displayName: string;
+    level: LanguageLevel;
+    learning: LearningLanguage;
+  }) => void;
   /** Read-only replica for the guide */
   preview?: boolean;
 }
@@ -18,12 +31,15 @@ export function ProfileSetup({
   const [displayName, setDisplayName] = useState(
     initial?.displayName ?? (preview ? "Alex" : "")
   );
+  const [learning, setLearning] = useState<LearningLanguage>(
+    initial?.learning ?? DEFAULT_LEARNING_LANGUAGE
+  );
   const [level, setLevel] = useState<LanguageLevel>(initial?.level ?? "B1");
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (preview || !displayName.trim()) return;
-    onSave({ displayName: displayName.trim(), level });
+    onSave({ displayName: displayName.trim(), level, learning });
   };
 
   return (
@@ -32,7 +48,8 @@ export function ProfileSetup({
         Create your profile
       </h1>
       <p className="mt-2 text-stone-500 dark:text-stone-400">
-        Saved on this device. You&apos;ll practice English with other learners.
+        Saved on this device. You&apos;ll practice any language with other
+        learners.
       </p>
 
       <form onSubmit={handleSubmit} className="mt-8 space-y-5">
@@ -58,10 +75,41 @@ export function ProfileSetup({
 
         <div>
           <label
+            htmlFor={preview ? undefined : "learning"}
+            className="mb-1.5 block text-sm font-medium text-stone-700 dark:text-stone-300"
+          >
+            Language to practice
+          </label>
+          <div className="flex flex-wrap gap-2 pt-1">
+            {LEARNING_LANGUAGES.map((lang) => (
+              <button
+                key={lang}
+                type="button"
+                onClick={() => {
+                  if (!preview) setLearning(lang);
+                }}
+                tabIndex={preview ? -1 : undefined}
+                className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition ${
+                  learning === lang
+                    ? "bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900"
+                    : "bg-stone-100 text-stone-600 hover:bg-stone-200 dark:bg-white/10 dark:text-stone-300 dark:hover:bg-white/15"
+                }`}
+              >
+                {lang}
+              </button>
+            ))}
+          </div>
+          {!preview ? (
+            <input id="learning" type="hidden" value={learning} />
+          ) : null}
+        </div>
+
+        <div>
+          <label
             htmlFor={preview ? undefined : "level"}
             className="mb-1.5 block text-sm font-medium text-stone-700 dark:text-stone-300"
           >
-            English level
+            Your level
           </label>
           <div className="flex flex-wrap gap-2 pt-1">
             {LANGUAGE_LEVELS.map((lvl) => (

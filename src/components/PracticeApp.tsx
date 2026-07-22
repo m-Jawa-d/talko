@@ -4,9 +4,11 @@ import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActiveCall } from "@/components/ActiveCall";
+import { ActiveChat } from "@/components/ActiveChat";
 import { CallFeedback } from "@/components/CallFeedback";
 import { ConfigMissing } from "@/components/ConfigMissing";
 import { IncomingCall } from "@/components/IncomingCall";
+import { OutgoingInvite } from "@/components/OutgoingInvite";
 import { PracticeLobby } from "@/components/PracticeLobby";
 import { ProfileSetup } from "@/components/ProfileSetup";
 import { SiteFooter, SiteHeader, SiteNavPill } from "@/components/SiteHeader";
@@ -20,9 +22,12 @@ import { isSupabaseConfigured } from "@/lib/supabase";
 import {
   CallHistoryEntry,
   CallRatingTag,
+  ChatMessage,
   LanguageLevel,
+  LearningLanguage,
   PresenceUser,
   RoomId,
+  SessionKind,
   SignalPayload,
 } from "@/types";
 
@@ -32,12 +37,17 @@ interface PendingFeedback {
   peerId: string;
   peerName: string;
   peerLevel: LanguageLevel;
+  peerLearning: LearningLanguage;
   durationSeconds: number;
   prompt?: string;
   roomId: RoomId;
 }
 
 const MIN_FEEDBACK_SECONDS = 20;
+
+function makeMessageId() {
+  return crypto.randomUUID();
+}
 
 export function PracticeApp() {
   const { profile, hydrated, updateProfile, resetProfile } = useProfile();
@@ -50,12 +60,15 @@ export function PracticeApp() {
   const [pendingFeedback, setPendingFeedback] = useState<PendingFeedback | null>(
     null
   );
+  const [sessionKind, setSessionKind] = useState<SessionKind | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [configured] = useState(() => isSupabaseConfigured());
 
   const peerIdRef = useRef<string | null>(null);
   const lookingTimerRef = useRef<number | null>(null);
   const matchedRef = useRef(false);
   const phaseRef = useRef<Phase>("idle");
+  const sessionKindRef = useRef<SessionKind | null>(null);
   const callStartedAtRef = useRef<number | null>(null);
   const callConnectedRef = useRef(false);
   const lastPromptRef = useRef<string | undefined>(undefined);
@@ -64,9 +77,11 @@ export function PracticeApp() {
     id: string;
     displayName: string;
     level: LanguageLevel;
+    learning: LearningLanguage;
   } | null>(null);
 
   roomIdRef.current = roomId;
+  sessionKindRef.current = sessionKind;
 
   const sendSignalRef = useRef<
     (payload: Omit<SignalPayload, "from">) => Promise<void>
@@ -129,13 +144,14 @@ export function PracticeApp() {
       peerId: snap.id,
       peerName: snap.displayName,
       peerLevel: snap.level,
+      peerLearning: snap.learning,
       durationSeconds,
       prompt: lastPromptRef.current,
       roomId: roomIdRef.current,
     };
   }, []);
 
-  const resetCallUi = useCallback(
+  const resetSessionUi = useCallback(
     async (opts?: { offerFeedback?: boolean }) => {
       const feedback =
         opts?.offerFeedback !== false ? buildFeedbackIfNeeded() : null;
@@ -148,6 +164,9 @@ export function PracticeApp() {
       callConnectedRef.current = false;
       lastPromptRef.current = undefined;
       peerSnapshotRef.current = null;
+      sessionKindRef.current = null;
+      setSessionKind(null);
+      setMessages([]);
       setPeer(null);
       setIncoming(null);
       setPhaseSafe("idle");
@@ -187,28 +206,46 @@ export function PracticeApp() {
 
   useEffect(() => {
     if (phase !== "active") return;
+    if (sessionKind === "chat") {
+      if (!callConnectedRef.current) {
+        callConnectedRef.current = true;
+        callStartedAtRef.current = Date.now();
+      }
+      return;
+    }
     if (webrtc.connectionState === "connected" && !callConnectedRef.current) {
       callConnectedRef.current = true;
       callStartedAtRef.current = Date.now();
     }
-  }, [phase, webrtc.connectionState]);
+  }, [phase, sessionKind, webrtc.connectionState]);
 
   const rememberPeer = useCallback((user: PresenceUser) => {
     peerSnapshotRef.current = {
       id: user.id,
       displayName: user.displayName,
       level: user.level,
+      learning: user.learning,
     };
+  }, []);
+
+  const appendMessage = useCallback((msg: ChatMessage) => {
+    setMessages((prev) => {
+      if (prev.some((m) => m.id === msg.id)) return prev;
+      return [...prev, msg];
+    });
   }, []);
 
   const onSignal = useCallback(
     async (signal: SignalPayload) => {
       switch (signal.type) {
-        case "call-invite": {
+        case "call-invite":
+        case "chat-invite": {
+          const kind: SessionKind =
+            signal.type === "chat-invite" ? "chat" : "call";
           const current = phaseRef.current;
           if (current !== "idle" && current !== "looking") {
             await sendSignalRef.current({
-              type: "call-decline",
+              type: kind === "chat" ? "chat-decline" : "call-decline",
               toId: signal.from.id,
             });
             return;
@@ -216,6 +253,9 @@ export function PracticeApp() {
           clearLookingTimer();
           matchedRef.current = true;
           rememberPeer(signal.from);
+          sessionKindRef.current = kind;
+          setSessionKind(kind);
+          setMessages([]);
           setIncoming(signal.from);
           setPeer(signal.from);
           peerIdRef.current = signal.from.id;
@@ -226,6 +266,8 @@ export function PracticeApp() {
         case "call-accept": {
           peerIdRef.current = signal.from.id;
           rememberPeer(signal.from);
+          sessionKindRef.current = "call";
+          setSessionKind("call");
           setPeer(signal.from);
           setPhaseSafe("active");
           setBanner(null);
@@ -246,27 +288,60 @@ export function PracticeApp() {
                 ? "Microphone permission is required to start a call."
                 : "Couldn’t start the call. Check your microphone and try again.";
             setBanner(msg);
-            await resetCallUi({ offerFeedback: false });
+            await resetSessionUi({ offerFeedback: false });
           }
           break;
         }
-        case "call-decline": {
-          setBanner(`${signal.from.displayName} declined the call.`);
-          await resetCallUi({ offerFeedback: false });
+        case "chat-accept": {
+          peerIdRef.current = signal.from.id;
+          rememberPeer(signal.from);
+          sessionKindRef.current = "chat";
+          setSessionKind("chat");
+          setPeer(signal.from);
+          setPhaseSafe("active");
+          setBanner(null);
+          callConnectedRef.current = true;
+          callStartedAtRef.current = Date.now();
+          await setPresenceRef.current("In Chat");
           break;
         }
-        case "call-end": {
+        case "call-decline":
+        case "chat-decline": {
+          const label = signal.type === "chat-decline" ? "chat" : "call";
+          setBanner(`${signal.from.displayName} declined the ${label}.`);
+          await resetSessionUi({ offerFeedback: false });
+          break;
+        }
+        case "call-end":
+        case "chat-end": {
           const wasActive = phaseRef.current === "active";
-          const feedback = await resetCallUi();
+          const feedback = await resetSessionUi();
           if (wasActive && !feedback) {
-            setBanner("The other person left the call.");
+            setBanner(
+              signal.type === "chat-end"
+                ? "The other person left the chat."
+                : "The other person left the call."
+            );
           }
+          break;
+        }
+        case "chat-message": {
+          if (!signal.text || !signal.messageId) return;
+          if (signal.from.id !== peerIdRef.current) return;
+          appendMessage({
+            id: signal.messageId,
+            fromId: signal.from.id,
+            text: signal.text,
+            sentAt: Date.now(),
+          });
           break;
         }
         case "webrtc-offer": {
           if (!signal.sdp) return;
           peerIdRef.current = signal.from.id;
           rememberPeer(signal.from);
+          sessionKindRef.current = "call";
+          setSessionKind("call");
           setPhaseSafe("active");
           await setPresenceRef.current("In Call");
           try {
@@ -285,7 +360,7 @@ export function PracticeApp() {
                 ? "Microphone permission is required to join the call."
                 : "Couldn’t join the call. Check your microphone and try again.";
             setBanner(msg);
-            await resetCallUi({ offerFeedback: false });
+            await resetSessionUi({ offerFeedback: false });
           }
           break;
         }
@@ -301,7 +376,13 @@ export function PracticeApp() {
         }
       }
     },
-    [clearLookingTimer, rememberPeer, resetCallUi, setPhaseSafe]
+    [
+      appendMessage,
+      clearLookingTimer,
+      rememberPeer,
+      resetSessionUi,
+      setPhaseSafe,
+    ]
   );
 
   const lobby = useLobby({
@@ -320,11 +401,30 @@ export function PracticeApp() {
     matchedRef.current = true;
     peerIdRef.current = user.id;
     rememberPeer(user);
+    sessionKindRef.current = "call";
+    setSessionKind("call");
+    setMessages([]);
     setPeer(user);
     setPhaseSafe("outgoing");
     setBanner(`Calling ${user.displayName}…`);
     await lobby.setPresenceStatus("Busy");
     await lobby.sendSignal({ type: "call-invite", toId: user.id });
+  };
+
+  const startChat = async (user: PresenceUser) => {
+    if (phase !== "idle" && phase !== "looking") return;
+    clearLookingTimer();
+    matchedRef.current = true;
+    peerIdRef.current = user.id;
+    rememberPeer(user);
+    sessionKindRef.current = "chat";
+    setSessionKind("chat");
+    setMessages([]);
+    setPeer(user);
+    setPhaseSafe("outgoing");
+    setBanner(`Chatting with ${user.displayName}…`);
+    await lobby.setPresenceStatus("Busy");
+    await lobby.sendSignal({ type: "chat-invite", toId: user.id });
   };
 
   const tryMatch = useCallback(async () => {
@@ -343,6 +443,9 @@ export function PracticeApp() {
     clearLookingTimer();
     peerIdRef.current = partner.id;
     rememberPeer(partner);
+    sessionKindRef.current = "call";
+    setSessionKind("call");
+    setMessages([]);
     setPeer(partner);
     setPhaseSafe("outgoing");
     setBanner(`Matched with ${partner.displayName}…`);
@@ -390,31 +493,65 @@ export function PracticeApp() {
 
   const handleAccept = async () => {
     if (!incoming) return;
+    const kind = sessionKindRef.current ?? "call";
     rememberPeer(incoming);
     setIncoming(null);
     setPhaseSafe("active");
+    if (kind === "chat") {
+      callConnectedRef.current = true;
+      callStartedAtRef.current = Date.now();
+      await lobby.setPresenceStatus("In Chat");
+      await lobby.sendSignal({ type: "chat-accept", toId: incoming.id });
+      return;
+    }
     await lobby.setPresenceStatus("In Call");
     await lobby.sendSignal({ type: "call-accept", toId: incoming.id });
   };
 
   const handleDecline = async () => {
     if (!incoming) return;
-    await lobby.sendSignal({ type: "call-decline", toId: incoming.id });
-    await resetCallUi({ offerFeedback: false });
+    const kind = sessionKindRef.current ?? "call";
+    await lobby.sendSignal({
+      type: kind === "chat" ? "chat-decline" : "call-decline",
+      toId: incoming.id,
+    });
+    await resetSessionUi({ offerFeedback: false });
   };
 
-  const handleEndCall = async () => {
+  const handleEndSession = async () => {
     const toId = peerIdRef.current;
-    const failed = Boolean(webrtc.failureReason);
+    const kind = sessionKindRef.current ?? "call";
+    const failed = kind === "call" && Boolean(webrtc.failureReason);
     if (toId) {
-      await lobby.sendSignal({ type: "call-end", toId });
+      await lobby.sendSignal({
+        type: kind === "chat" ? "chat-end" : "call-end",
+        toId,
+      });
     }
-    await resetCallUi({ offerFeedback: !failed });
+    await resetSessionUi({ offerFeedback: !failed });
     if (failed) {
       setBanner(
         "Call couldn’t connect. Try again — different networks sometimes block audio until TURN is set up."
       );
     }
+  };
+
+  const sendChatMessage = async (text: string) => {
+    const toId = peerIdRef.current;
+    if (!toId || !profile) return;
+    const message: ChatMessage = {
+      id: makeMessageId(),
+      fromId: profile.id,
+      text,
+      sentAt: Date.now(),
+    };
+    appendMessage(message);
+    await lobby.sendSignal({
+      type: "chat-message",
+      toId,
+      text: message.text,
+      messageId: message.id,
+    });
   };
 
   const persistFeedback = (input: {
@@ -515,7 +652,7 @@ export function PracticeApp() {
               </Link>
               <SiteNavPill
                 onClick={() => {
-                  void resetCallUi({ offerFeedback: false });
+                  void resetSessionUi({ offerFeedback: false });
                   resetProfile();
                 }}
               >
@@ -538,37 +675,69 @@ export function PracticeApp() {
             history={history}
             error={lobby.error}
             banner={banner}
+            outgoingUserId={phase === "outgoing" ? peer?.id : null}
+            outgoingKind={phase === "outgoing" ? sessionKind : null}
             onRoomChange={handleRoomChange}
             onFindPartner={() => void handleFindPartner()}
             onCancelLooking={() => void cancelLooking()}
-            onCancelOutgoing={() => void handleEndCall()}
+            onCancelOutgoing={() => void handleEndSession()}
             onCall={(user) => void startCall(user)}
+            onChat={(user) => void startChat(user)}
           />
         </main>
       </div>
 
       <SiteFooter />
 
+      {phase === "outgoing" && peer && sessionKind ? (
+        <OutgoingInvite
+          peer={peer}
+          kind={sessionKind}
+          onCancel={() => void handleEndSession()}
+        />
+      ) : null}
+
       {phase === "incoming" && incoming ? (
         <IncomingCall
           caller={incoming}
+          kind={sessionKind ?? "call"}
           onAccept={() => void handleAccept()}
           onDecline={() => void handleDecline()}
         />
       ) : null}
 
-      {phase === "active" && peer ? (
+      {phase === "active" && peer && sessionKind === "chat" ? (
+        <ActiveChat
+          peerName={peer.displayName}
+          peerLevel={peer.level}
+          peerLearning={peer.learning}
+          myId={profile.id}
+          roomId={roomId}
+          messages={messages}
+          onSend={(text) => void sendChatMessage(text)}
+          onEndChat={() => void handleEndSession()}
+          onPromptChange={(p) => {
+            lastPromptRef.current = p.text;
+          }}
+        />
+      ) : null}
+
+      {phase === "active" && peer && sessionKind === "call" ? (
         <ActiveCall
           peerName={peer.displayName}
           peerLevel={peer.level}
+          peerLearning={peer.learning}
+          myId={profile.id}
           roomId={roomId}
           localStream={webrtc.localStream}
           remoteStream={webrtc.remoteStream}
           connectionState={webrtc.connectionState}
           failureReason={webrtc.failureReason}
           isMuted={webrtc.isMuted}
+          messages={messages}
+          onSendMessage={(text) => void sendChatMessage(text)}
           onToggleMute={webrtc.toggleMute}
-          onEndCall={() => void handleEndCall()}
+          onEndCall={() => void handleEndSession()}
           onPromptChange={(p) => {
             lastPromptRef.current = p.text;
           }}
@@ -579,6 +748,7 @@ export function PracticeApp() {
         <CallFeedback
           peerName={pendingFeedback.peerName}
           peerLevel={pendingFeedback.peerLevel}
+          peerLearning={pendingFeedback.peerLearning}
           durationSeconds={pendingFeedback.durationSeconds}
           onSubmit={persistFeedback}
           onSkip={skipFeedback}

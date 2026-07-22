@@ -15,7 +15,7 @@ export function SiteHeader({ action }: SiteHeaderProps) {
           Talko
         </span>
         <span className="hidden text-sm text-stone-500 sm:inline dark:text-stone-400">
-          English practice
+          Language practice
         </span>
       </Link>
       <div className="flex items-center gap-2 sm:gap-3">

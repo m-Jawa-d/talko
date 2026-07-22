@@ -1,3 +1,4 @@
+import { languageSlug } from "@/lib/languages";
 import { ConversationPrompt } from "@/lib/prompts";
 import { RoomId } from "@/types";
 
@@ -82,10 +83,19 @@ export function isRoomId(value: unknown): value is RoomId {
   return PRACTICE_ROOMS.some((r) => r.id === value);
 }
 
-/** Open chat keeps the original lobby channel so existing sessions still meet. */
-export function roomChannelName(roomId: RoomId): string {
-  if (roomId === "open") return "talko-lobby";
-  return `talko-room-${roomId}`;
+/**
+ * Lobby channels are scoped by learning language so Spanish practice
+ * doesn’t mix with English (etc.). English open chat keeps the legacy
+ * `talko-lobby` name so existing sessions still meet.
+ */
+export function roomChannelName(
+  roomId: RoomId,
+  learningLanguage = "English"
+): string {
+  const slug = languageSlug(learningLanguage) || "english";
+  if (roomId === "open" && slug === "english") return "talko-lobby";
+  if (roomId === "open") return `talko-lobby-${slug}`;
+  return `talko-room-${slug}-${roomId}`;
 }
 
 export function loadRoomId(): RoomId {

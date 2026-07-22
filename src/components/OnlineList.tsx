@@ -1,15 +1,19 @@
 "use client";
 
-import { Phone, Users } from "lucide-react";
+import { Loader2, MessageCircle, Phone, Users, X } from "lucide-react";
 import { isNearLevel } from "@/lib/levels";
-import { LanguageLevel, PresenceStatus, PresenceUser } from "@/types";
+import { LanguageLevel, PresenceStatus, PresenceUser, SessionKind } from "@/types";
 
 interface OnlineListProps {
   users: PresenceUser[];
   onCall: (user: PresenceUser) => void;
+  onChat?: (user: PresenceUser) => void;
   disabled?: boolean;
   connecting?: boolean;
   myLevel?: LanguageLevel;
+  outgoingUserId?: string | null;
+  outgoingKind?: SessionKind | null;
+  onCancelOutgoing?: () => void;
 }
 
 const AVATAR_TONES = [
@@ -27,6 +31,7 @@ function statusDot(status: PresenceStatus) {
     case "Looking":
       return "bg-sky-500 animate-[status-breathe_2s_ease-out_infinite]";
     case "In Call":
+    case "In Chat":
       return "bg-stone-400";
     case "Busy":
       return "bg-amber-500";
@@ -53,9 +58,13 @@ function avatarTone(seed: string) {
 export function OnlineList({
   users,
   onCall,
+  onChat,
   disabled,
   connecting,
   myLevel,
+  outgoingUserId,
+  outgoingKind,
+  onCancelOutgoing,
 }: OnlineListProps) {
   const sorted = [...users].sort((a, b) => {
     if (!myLevel) return 0;
@@ -104,15 +113,26 @@ export function OnlineList({
   return (
     <ul className="flex gap-3.5 overflow-x-auto pb-2 pt-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:gap-4 [&::-webkit-scrollbar]:hidden">
       {sorted.map((user, index) => {
-        const canCall = user.status === "Online" || user.status === "Looking";
+        const canConnect =
+          user.status === "Online" || user.status === "Looking";
         const near = myLevel ? isNearLevel(myLevel, user.level) : false;
+        const isOutgoingTarget = outgoingUserId === user.id;
+        const connectingLabel =
+          outgoingKind === "chat" ? "Connecting…" : "Calling…";
+
         return (
           <li
             key={user.id}
             className="shrink-0 animate-[soft-rise_0.55s_ease-out_both]"
             style={{ animationDelay: `${Math.min(index, 6) * 60}ms` }}
           >
-            <div className="group relative flex h-56 w-40 flex-col overflow-hidden rounded-[1.6rem] bg-[var(--page-surface)] p-4 pb-4 ring-1 ring-[var(--page-border)] transition duration-300 hover:-translate-y-1 hover:ring-teal-700/25 dark:hover:ring-teal-400/30">
+            <div
+              className={`@container group relative flex h-[15.5rem] w-40 flex-col overflow-hidden rounded-[1.6rem] bg-[var(--page-surface)] p-4 pb-4 ring-1 transition duration-300 ${
+                isOutgoingTarget
+                  ? "ring-2 ring-teal-500/60 dark:ring-teal-400/50"
+                  : "ring-[var(--page-border)] hover:-translate-y-1 hover:ring-teal-700/25 dark:hover:ring-teal-400/30"
+              }`}
+            >
               <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-teal-500/[0.08] to-transparent dark:from-teal-400/[0.1]" />
 
               <div
@@ -120,7 +140,11 @@ export function OnlineList({
               >
                 {initials(user.displayName) || "•"}
                 <span
-                  className={`absolute bottom-0.5 right-0.5 h-2.5 w-2.5 rounded-full ring-[3px] ring-[var(--page-surface)] ${statusDot(user.status)}`}
+                  className={`absolute bottom-0.5 right-0.5 h-2.5 w-2.5 rounded-full ring-[3px] ring-[var(--page-surface)] ${
+                    isOutgoingTarget
+                      ? "bg-amber-400 animate-pulse"
+                      : statusDot(user.status)
+                  }`}
                 />
               </div>
 
@@ -128,26 +152,59 @@ export function OnlineList({
                 <p className="truncate text-sm font-semibold text-stone-900 dark:text-stone-50">
                   {user.displayName}
                 </p>
-                <p className="mt-1 text-xs text-stone-400">
-                  {user.level}
+                <p className="mt-1 truncate text-xs text-stone-400">
+                  {user.learning} · {user.level}
                   {user.status === "Looking" ? " · looking" : ""}
                 </p>
-                {near ? (
-                  <span className="mt-2 inline-flex rounded-full bg-teal-500/10 px-2 py-0.5 text-[11px] font-medium text-teal-800 dark:text-teal-300">
+                {isOutgoingTarget ? (
+                  <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:text-amber-300">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    {connectingLabel}
+                  </span>
+                ) : near ? (
+                  <span className="mt-2 inline-flex max-w-full truncate rounded-full bg-teal-500/10 px-2 py-0.5 text-[11px] font-medium text-teal-800 dark:text-teal-300">
                     Near your level
                   </span>
                 ) : null}
               </div>
 
-              <button
-                type="button"
-                disabled={!canCall || disabled}
-                onClick={() => onCall(user)}
-                className="relative mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-stone-900 py-2.5 text-sm font-semibold text-white transition group-hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-30 dark:bg-teal-400 dark:text-stone-950 dark:group-hover:bg-teal-300"
-              >
-                <Phone className="h-3.5 w-3.5" />
-                Call
-              </button>
+              {isOutgoingTarget ? (
+                <button
+                  type="button"
+                  onClick={onCancelOutgoing}
+                  className="relative mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-stone-100 py-2 text-xs font-semibold text-stone-700 transition hover:bg-stone-200 dark:bg-white/10 dark:text-stone-200 dark:hover:bg-white/15"
+                >
+                  <X className="h-3.5 w-3.5 shrink-0" />
+                  Cancel
+                </button>
+              ) : (
+                <div className="relative mt-3 flex gap-1.5">
+                  <button
+                    type="button"
+                    disabled={!canConnect || disabled}
+                    onClick={() => onCall(user)}
+                    aria-label={`Call ${user.displayName}`}
+                    className="inline-flex min-w-0 flex-1 items-center justify-center gap-1 rounded-full bg-stone-900 px-2 py-2 text-xs font-semibold text-white transition group-hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-30 dark:bg-teal-400 dark:text-stone-950 dark:group-hover:bg-teal-300"
+                  >
+                    <Phone className="h-3.5 w-3.5 shrink-0" />
+                    <span className="hidden truncate @[8.75rem]:inline">
+                      Call
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!canConnect || disabled || !onChat}
+                    onClick={() => onChat?.(user)}
+                    aria-label={`Chat with ${user.displayName}`}
+                    className="inline-flex min-w-0 flex-1 items-center justify-center gap-1 rounded-full bg-stone-100 px-2 py-2 text-xs font-semibold text-stone-700 transition hover:bg-stone-200 disabled:cursor-not-allowed disabled:opacity-30 dark:bg-white/10 dark:text-stone-200 dark:hover:bg-white/15"
+                  >
+                    <MessageCircle className="h-3.5 w-3.5 shrink-0" />
+                    <span className="hidden truncate @[8.75rem]:inline">
+                      Chat
+                    </span>
+                  </button>
+                </div>
+              )}
             </div>
           </li>
         );

@@ -1,3 +1,7 @@
+import {
+  DEFAULT_LEARNING_LANGUAGE,
+  isLearningLanguage,
+} from "@/lib/languages";
 import { PROFILE_STORAGE_KEY, UserProfile } from "@/types";
 
 export function loadProfile(): UserProfile | null {
@@ -5,23 +9,32 @@ export function loadProfile(): UserProfile | null {
   try {
     const raw = localStorage.getItem(PROFILE_STORAGE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as UserProfile;
+    const parsed = JSON.parse(raw) as Partial<UserProfile>;
     if (!parsed?.id || !parsed?.displayName || !parsed?.level) return null;
-    return { ...parsed, learning: "English" };
+    return {
+      id: parsed.id,
+      displayName: parsed.displayName,
+      level: parsed.level,
+      learning: isLearningLanguage(parsed.learning)
+        ? parsed.learning
+        : DEFAULT_LEARNING_LANGUAGE,
+    };
   } catch {
     return null;
   }
 }
 
 export function saveProfile(
-  input: Omit<UserProfile, "id" | "learning"> & { id?: string }
+  input: Omit<UserProfile, "id"> & { id?: string }
 ): UserProfile {
   const existing = loadProfile();
   const profile: UserProfile = {
     id: input.id ?? existing?.id ?? crypto.randomUUID(),
     displayName: input.displayName.trim(),
     level: input.level,
-    learning: "English",
+    learning: isLearningLanguage(input.learning)
+      ? input.learning
+      : DEFAULT_LEARNING_LANGUAGE,
   };
   localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
   return profile;

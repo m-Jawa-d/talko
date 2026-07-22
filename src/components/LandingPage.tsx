@@ -8,7 +8,7 @@ const steps = [
   {
     n: "01",
     title: "Say who you are",
-    body: "A display name and your level. Saved on this device — nothing else.",
+    body: "A display name, the language you’re practicing, and your level. Saved on this device — nothing else.",
   },
   {
     n: "02",
@@ -84,7 +84,7 @@ export function LandingPage() {
               Talko
             </h1>
             <p className="mt-6 max-w-md text-lg leading-relaxed text-stone-600 animate-[fade-up_0.75s_ease-out_0.22s_both] sm:text-xl dark:text-stone-300">
-              Practice English in live 1-on-1 audio calls. Find a partner
+              Practice any language in live 1-on-1 audio calls. Find a partner
               instantly, or choose someone online.
             </p>
 
@@ -232,8 +232,8 @@ export function LandingPage() {
               Your next conversation is one click away
             </h2>
             <p className="mt-5 max-w-md text-base leading-relaxed text-stone-300">
-              Join the live lobby, find a partner, and start speaking English —
-              no signup wall, no waiting list.
+              Join the live lobby, find a partner, and start speaking — no
+              signup wall, no waiting list.
             </p>
             <div className="mt-10 flex flex-wrap items-center gap-4">
               <Link

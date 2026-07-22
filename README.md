@@ -1,6 +1,6 @@
 # Talko
 
-Practice English in live **1-on-1 audio calls** with other learners. No accounts, no bots, no recordings — pick a room, find a partner, and speak.
+Practice **any language** in live **1-on-1 audio calls or text chat** with other learners. No accounts, no bots, no recordings — pick a language, join a room, find a partner, and speak or type.
 
 **Stack:** Next.js 15 (App Router) · Supabase Realtime (presence + signaling) · WebRTC P2P audio · Tailwind CSS · Vercel-ready
 
@@ -8,13 +8,14 @@ Practice English in live **1-on-1 audio calls** with other learners. No accounts
 
 ## Features
 
-- **Lightweight profile** — display name + CEFR level (A1–C2), saved on the device
-- **Topic rooms** — Open chat, Daily life, Travel, Work, Opinions, Hobbies, Culture, Tech
+- **Lightweight profile** — display name, language to practice, and CEFR level (A1–C2), saved on the device
+- **Topic rooms** — Open chat, Daily life, Travel, Work, Opinions, Hobbies, Culture, Tech (scoped per language)
+- **Call or chat** — start a live audio call, or practice by text only (same invite / accept flow)
+- **In-call messaging** — type while you talk over the same Realtime channel
 - **Find a partner** — smart matching prefers people who are looking and nearby in level
-- **Call anyone online** — or accept an incoming invite
 - **Conversation prompts** — optional icebreakers filtered by the room you joined
 - **Mute / end call** — peer-to-peer audio with connection status feedback
-- **Call history & ratings** — local notes after longer calls (helpful / clear / kind)
+- **Call history & ratings** — local notes after longer sessions (helpful / clear / kind)
 - **Guide** — walkthrough of the flow at [`/guide`](./src/app/guide/page.tsx)
 
 Nothing is stored on a server except ephemeral Realtime presence and call signaling. Profile, room choice, and history live in `localStorage`.
@@ -27,8 +28,8 @@ Nothing is stored on a server except ephemeral Realtime presence and call signal
 Landing → Profile → Room lobby → Match or Call → Accept → WebRTC audio
 ```
 
-1. You open **Practice** and set a name + English level.
-2. You join a **room**. Each room is its own Supabase Realtime channel so you only see people in the same topic.
+1. You open **Practice** and set a name, language, and level.
+2. You join a **room**. Each room × language is its own Supabase Realtime channel so you only see people practicing the same language in the same topic.
 3. **Find a partner** picks someone (preferring `Looking` + similar CEFR), or you tap **Call** on a name in the list.
 4. The other person accepts. WebRTC offer / answer / ICE candidates travel over Supabase **Broadcast**.
 5. Audio streams peer-to-peer. After the call, optional feedback is saved locally.
@@ -140,7 +141,8 @@ src/
     useWebRTC.ts             RTCPeerConnection + mic
     useProfile.ts            localStorage profile
   lib/
-    rooms.ts                 Room definitions + channels
+    rooms.ts                 Room definitions + language-scoped channels
+    languages.ts             Supported practice languages
     levels.ts                CEFR distance + match pick
     prompts.ts               Conversation icebreakers
     history.ts               Call history persistence

@@ -7,6 +7,7 @@ import { CallRatingTag, LanguageLevel } from "@/types";
 interface CallFeedbackProps {
   peerName: string;
   peerLevel: LanguageLevel;
+  peerLearning: string;
   durationSeconds: number;
   onSubmit: (input: { ratings: CallRatingTag[]; note: string }) => void;
   onSkip: () => void;
@@ -22,6 +23,7 @@ function formatDuration(total: number) {
 export function CallFeedback({
   peerName,
   peerLevel,
+  peerLearning,
   durationSeconds,
   onSubmit,
   onSkip,
@@ -53,7 +55,8 @@ export function CallFeedback({
           How was practice with {peerName}?
         </h2>
         <p className="mt-2 text-sm text-stone-500 dark:text-stone-400">
-          English · {peerLevel}. Optional — helps you remember good partners.
+          {peerLearning} · {peerLevel}. Optional — helps you remember good
+          partners.
         </p>
 
         <div className="mt-6 flex flex-wrap gap-2">

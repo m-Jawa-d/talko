@@ -5,7 +5,7 @@ import { CallHistory } from "@/components/CallHistory";
 import { OnlineList } from "@/components/OnlineList";
 import { RoomPicker } from "@/components/RoomPicker";
 import { getRoom } from "@/lib/rooms";
-import { CallHistoryEntry, PresenceUser, RoomId, UserProfile } from "@/types";
+import { CallHistoryEntry, PresenceUser, RoomId, SessionKind, UserProfile } from "@/types";
 
 export type PracticeLobbyPhase = "idle" | "looking" | "outgoing";
 
@@ -19,11 +19,14 @@ interface PracticeLobbyProps {
   history?: CallHistoryEntry[];
   error?: string | null;
   banner?: string | null;
+  outgoingUserId?: string | null;
+  outgoingKind?: SessionKind | null;
   onRoomChange?: (roomId: RoomId) => void;
   onFindPartner?: () => void;
   onCancelLooking?: () => void;
   onCancelOutgoing?: () => void;
   onCall?: (user: PresenceUser) => void;
+  onChat?: (user: PresenceUser) => void;
   /** Non-interactive scaled replica for the guide */
   preview?: boolean;
 }
@@ -38,11 +41,14 @@ export function PracticeLobby({
   history = [],
   error,
   banner,
+  outgoingUserId,
+  outgoingKind,
   onRoomChange,
   onFindPartner,
   onCancelLooking,
   onCancelOutgoing,
   onCall,
+  onChat,
   preview = false,
 }: PracticeLobbyProps) {
   const busy = phase !== "idle";
@@ -54,7 +60,7 @@ export function PracticeLobby({
     <div
       className={`mx-auto w-full max-w-2xl ${preview ? "p-6 sm:p-8" : ""}`}
     >
-      <header className="animate-[fade-up_0.55s_ease-out_both]">
+      {/* <header className="animate-[fade-up_0.55s_ease-out_both]">
         <div className="mb-6 inline-flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-full bg-[var(--page-surface)]/75 px-3.5 py-1.5 text-sm ring-1 ring-[var(--page-border)] backdrop-blur-md">
           <span
             className={`h-1.5 w-1.5 rounded-full ${
@@ -68,7 +74,7 @@ export function PracticeLobby({
           </span>
           <span className="text-stone-300 dark:text-stone-600">·</span>
           <span className="text-stone-500 dark:text-stone-400">
-            {profile.level}
+            {profile.learning} · {profile.level}
           </span>
           <span className="text-stone-300 dark:text-stone-600">·</span>
           <span
@@ -83,16 +89,17 @@ export function PracticeLobby({
         </div>
 
         <p className="text-xs font-semibold uppercase tracking-[0.22em] text-teal-700 dark:text-teal-300">
-          Live English
+          Live {profile.learning}
         </p>
         <h1 className="mt-3 font-[family-name:var(--font-display)] text-4xl font-semibold tracking-tight text-stone-900 sm:text-[3.25rem] sm:leading-[1.05] dark:text-stone-50">
           Who will you
           <br className="hidden sm:block" /> practice with?
         </h1>
         <p className="mt-4 max-w-md text-base leading-relaxed text-stone-500 dark:text-stone-400">
-          Pick a topic, call someone online, or get matched near your level.
+          Pick a topic, then call or chat with someone online — or get matched
+          near your level.
         </p>
-      </header>
+      </header> */}
 
       <section className="mt-9 animate-[fade-up_0.6s_ease-out_0.05s_both]">
         <div className="flex flex-wrap items-end justify-between gap-3">
@@ -120,7 +127,7 @@ export function PracticeLobby({
               Available now
             </h2>
             <p className="mt-1 text-sm text-stone-400">
-              Private 1-on-1 audio · microphone required
+              Call for audio, or chat for text · private 1-on-1
             </p>
           </div>
           <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--page-surface)] px-2.5 py-1 text-xs font-medium tabular-nums text-stone-500 ring-1 ring-[var(--page-border)] dark:text-stone-300">
@@ -137,8 +144,12 @@ export function PracticeLobby({
           users={users}
           myLevel={profile.level}
           onCall={onCall ?? (() => undefined)}
+          onChat={onChat}
           disabled={!ready || busy || preview}
           connecting={!ready && !error}
+          outgoingUserId={phase === "outgoing" ? outgoingUserId : null}
+          outgoingKind={phase === "outgoing" ? outgoingKind : null}
+          onCancelOutgoing={onCancelOutgoing}
         />
       </section>
 
@@ -222,7 +233,7 @@ export function PracticeLobby({
                 tabIndex={preview ? -1 : undefined}
                 className="text-sm font-medium text-stone-500 underline-offset-4 transition hover:text-stone-800 hover:underline dark:text-stone-400 dark:hover:text-stone-200"
               >
-                Cancel call
+                Cancel invite
               </button>
             ) : null}
           </div>

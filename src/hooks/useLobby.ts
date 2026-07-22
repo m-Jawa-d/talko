@@ -98,7 +98,7 @@ export function useLobby({ profile, roomId, enabled, onSignal }: UseLobbyOptions
 
     let cancelled = false;
     const supabase = getSupabase();
-    const channelName = roomChannelName(roomId);
+    const channelName = roomChannelName(roomId, profile.learning);
     const channel = supabase.channel(channelName, {
       config: {
         presence: { key: profile.id },
@@ -145,7 +145,7 @@ export function useLobby({ profile, roomId, enabled, onSignal }: UseLobbyOptions
       void supabase.removeChannel(channel);
       channelRef.current = null;
     };
-  }, [enabled, profile, roomId, trackPresence]);
+  }, [enabled, profile, roomId, profile?.learning, trackPresence]);
 
   const others = users.filter((u) => u.id !== profile?.id);
 

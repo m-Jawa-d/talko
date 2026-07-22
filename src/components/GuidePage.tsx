@@ -42,9 +42,9 @@ const steps = [
   {
     n: "01",
     title: "Create your profile",
-    body: "Enter a display name and your English level. It’s saved on this device — no account needed.",
+    body: "Enter a display name, pick a language, and your level. It’s saved on this device — no account needed.",
     preview: (
-      <UiPreviewFrame scale={0.78}>
+      <UiPreviewFrame scale={0.72}>
         <div className="w-[400px] rounded-2xl bg-[var(--page-bg)] p-2">
           <ProfileSetup preview onSave={noop} />
         </div>
@@ -99,6 +99,7 @@ const steps = [
             preview
             peerName={demoPeer.displayName}
             peerLevel={demoPeer.level}
+            peerLearning={demoPeer.learning}
             roomId="travel"
             localStream={null}
             remoteStream={null}

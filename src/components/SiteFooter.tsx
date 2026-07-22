@@ -31,7 +31,7 @@ export function SiteFooter() {
               </span>
             </Link>
             <p className="mt-3 max-w-sm text-sm leading-relaxed text-stone-500 dark:text-stone-400">
-              Practice English with real people in live audio calls. Find a
+              Practice any language with real people in live audio calls. Find a
               partner instantly, or choose someone already online.
             </p>
           </div>

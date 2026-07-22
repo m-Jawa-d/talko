@@ -1,10 +1,11 @@
 "use client";
 
-import { Phone, PhoneOff } from "lucide-react";
-import { PresenceUser } from "@/types";
+import { MessageCircle, Phone, PhoneOff, X } from "lucide-react";
+import { PresenceUser, SessionKind } from "@/types";
 
 interface IncomingCallProps {
   caller: PresenceUser;
+  kind?: SessionKind;
   onAccept: () => void;
   onDecline: () => void;
   /** Embedded replica for the guide (not a fullscreen overlay) */
@@ -13,10 +14,13 @@ interface IncomingCallProps {
 
 export function IncomingCall({
   caller,
+  kind = "call",
   onAccept,
   onDecline,
   preview = false,
 }: IncomingCallProps) {
+  const isChat = kind === "chat";
+
   return (
     <div
       className={
@@ -27,13 +31,14 @@ export function IncomingCall({
     >
       <div className="w-full max-w-sm rounded-3xl bg-white p-7 shadow-xl dark:bg-stone-900 dark:ring-1 dark:ring-white/10">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-700 dark:text-teal-300">
-          Incoming call
+          {isChat ? "Incoming chat" : "Incoming call"}
         </p>
         <h2 className="mt-3 font-[family-name:var(--font-display)] text-2xl font-semibold text-stone-900 dark:text-stone-50">
           {caller.displayName}
         </h2>
         <p className="mt-1 text-sm text-stone-500 dark:text-stone-400">
-          English · {caller.level}
+          {caller.learning} · {caller.level}
+          {isChat ? " · text practice" : " · audio"}
         </p>
 
         <div className="mt-8 grid grid-cols-2 gap-3">
@@ -43,7 +48,7 @@ export function IncomingCall({
             tabIndex={preview ? -1 : undefined}
             className="inline-flex items-center justify-center gap-2 rounded-full bg-stone-100 py-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-200 dark:bg-white/10 dark:text-stone-200 dark:hover:bg-white/15"
           >
-            <PhoneOff className="h-4 w-4" />
+            {isChat ? <X className="h-4 w-4" /> : <PhoneOff className="h-4 w-4" />}
             Decline
           </button>
           <button
@@ -52,7 +57,11 @@ export function IncomingCall({
             tabIndex={preview ? -1 : undefined}
             className="inline-flex items-center justify-center gap-2 rounded-full bg-teal-700 py-3 text-sm font-semibold text-white transition hover:bg-teal-600"
           >
-            <Phone className="h-4 w-4" />
+            {isChat ? (
+              <MessageCircle className="h-4 w-4" />
+            ) : (
+              <Phone className="h-4 w-4" />
+            )}
             Accept
           </button>
         </div>

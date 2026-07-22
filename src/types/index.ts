@@ -1,17 +1,27 @@
+import type { LearningLanguage } from "@/lib/languages";
+
+export type { LearningLanguage };
 export type LanguageLevel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
 
-export type PresenceStatus = "Online" | "Looking" | "Busy" | "In Call";
+export type PresenceStatus =
+  | "Online"
+  | "Looking"
+  | "Busy"
+  | "In Call"
+  | "In Chat";
 
 export interface UserProfile {
   id: string;
   displayName: string;
   level: LanguageLevel;
-  learning: "English";
+  learning: LearningLanguage;
 }
 
 export interface PresenceUser extends UserProfile {
   status: PresenceStatus;
 }
+
+export type SessionKind = "call" | "chat";
 
 export type SignalType =
   | "call-invite"
@@ -20,7 +30,12 @@ export type SignalType =
   | "call-end"
   | "webrtc-offer"
   | "webrtc-answer"
-  | "webrtc-ice";
+  | "webrtc-ice"
+  | "chat-invite"
+  | "chat-accept"
+  | "chat-decline"
+  | "chat-end"
+  | "chat-message";
 
 export interface SignalPayload {
   type: SignalType;
@@ -28,6 +43,16 @@ export interface SignalPayload {
   toId: string;
   sdp?: RTCSessionDescriptionInit;
   candidate?: RTCIceCandidateInit;
+  /** Text body for chat-message */
+  text?: string;
+  messageId?: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  fromId: string;
+  text: string;
+  sentAt: number;
 }
 
 export const LANGUAGE_LEVELS: LanguageLevel[] = [

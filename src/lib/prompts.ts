@@ -38,7 +38,7 @@ export const CONVERSATION_PROMPTS: ConversationPrompt[] = [
   {
     id: "work-1",
     topic: "Work & study",
-    text: "What are you learning right now outside of English?",
+    text: "What else are you learning right now besides this language?",
   },
   {
     id: "work-2",
@@ -83,7 +83,7 @@ export const CONVERSATION_PROMPTS: ConversationPrompt[] = [
   {
     id: "future-2",
     topic: "Future",
-    text: "What’s one English goal for the next month, and how will you practice?",
+    text: "What’s one language goal for the next month, and how will you practice?",
   },
   {
     id: "fun-1",
