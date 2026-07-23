@@ -114,7 +114,7 @@ export function ChatInbox({
               Messages
             </h2>
             <p className="mt-1 text-sm text-stone-400">
-              Your chat threads · tap to reopen
+              Past sessions on this device · start a live chat to message
             </p>
           </div>
           <span className="text-xs tabular-nums text-stone-400">
@@ -231,12 +231,12 @@ export function ChatInbox({
                   className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-stone-900 py-3 text-sm font-semibold text-white transition hover:bg-teal-800 dark:bg-teal-400 dark:text-stone-950 dark:hover:bg-teal-300"
                 >
                   <MessageCircle className="h-4 w-4" />
-                  Message again
+                  Start a new chat
                 </button>
               ) : (
                 <p className="text-center text-sm text-stone-500 dark:text-stone-400">
-                  {open.peerName} isn’t online right now. You can still read
-                  this thread.
+                  {open.peerName} isn’t online. You can read this past session —
+                  messaging needs a live chat.
                 </p>
               )}
             </footer>

@@ -35,7 +35,9 @@ export type SignalType =
   | "chat-accept"
   | "chat-decline"
   | "chat-end"
-  | "chat-message";
+  | "chat-message"
+  | "chat-typing-start"
+  | "chat-typing-stop";
 
 export interface SignalPayload {
   type: SignalType;

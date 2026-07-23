@@ -50,9 +50,11 @@ function ChatAppInner({
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [roomId, setRoomId] = useState<RoomId>("open");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [peerTyping, setPeerTyping] = useState(false);
 
   const peerIdRef = useRef<string | null>(null);
   const phaseRef = useRef<Phase>("idle");
+  const peerTypingClearRef = useRef<number | null>(null);
   const peerSnapshotRef = useRef<{
     id: string;
     displayName: string;
@@ -131,9 +133,14 @@ function ChatAppInner({
   }, []);
 
   const resetSessionUi = useCallback(async () => {
+    if (peerTypingClearRef.current) {
+      window.clearTimeout(peerTypingClearRef.current);
+      peerTypingClearRef.current = null;
+    }
     peerIdRef.current = null;
     peerSnapshotRef.current = null;
     setMessages([]);
+    setPeerTyping(false);
     setPeer(null);
     setIncoming(null);
     setPhaseSafe("idle");
@@ -141,6 +148,52 @@ function ChatAppInner({
     setThreads(loadChatThreads());
     await setPresenceRef.current("Online");
   }, [setPhaseSafe]);
+
+  const markPeerTyping = useCallback((isTyping: boolean) => {
+    if (peerTypingClearRef.current) {
+      window.clearTimeout(peerTypingClearRef.current);
+      peerTypingClearRef.current = null;
+    }
+    setPeerTyping(isTyping);
+    if (isTyping) {
+      // Failsafe if the stop signal is lost
+      peerTypingClearRef.current = window.setTimeout(() => {
+        peerTypingClearRef.current = null;
+        setPeerTyping(false);
+      }, 3000);
+    }
+  }, []);
+
+  const sendTyping = useCallback(async (isTyping: boolean) => {
+    const toId = peerIdRef.current;
+    if (!toId || phaseRef.current !== "active") return;
+    await sendSignalRef.current({
+      type: isTyping ? "chat-typing-start" : "chat-typing-stop",
+      toId,
+    });
+  }, []);
+
+  const lastTypingSentAtRef = useRef(0);
+  const notifyTyping = useCallback(
+    (isTyping: boolean) => {
+      if (!isTyping) {
+        lastTypingSentAtRef.current = 0;
+        void sendTyping(false);
+        return;
+      }
+      const now = Date.now();
+      // First keystroke always sends; then refresh so peer failsafe stays alive
+      if (
+        lastTypingSentAtRef.current !== 0 &&
+        now - lastTypingSentAtRef.current < 800
+      ) {
+        return;
+      }
+      lastTypingSentAtRef.current = now;
+      void sendTyping(true);
+    },
+    [sendTyping]
+  );
 
   const onSignal = useCallback(
     async (signal: SignalPayload) => {
@@ -197,12 +250,24 @@ function ChatAppInner({
         case "chat-message": {
           if (!signal.text || !signal.messageId) return;
           if (signal.from.id !== peerIdRef.current) return;
+          markPeerTyping(false);
           appendMessage({
             id: signal.messageId,
             fromId: signal.from.id,
             text: signal.text,
             sentAt: Date.now(),
           });
+          break;
+        }
+        case "chat-typing-start": {
+          if (signal.from.id !== peerIdRef.current) return;
+          if (phaseRef.current !== "active") return;
+          markPeerTyping(true);
+          break;
+        }
+        case "chat-typing-stop": {
+          if (signal.from.id !== peerIdRef.current) return;
+          markPeerTyping(false);
           break;
         }
         default:
@@ -212,6 +277,7 @@ function ChatAppInner({
     [
       appendMessage,
       loadThreadForPeer,
+      markPeerTyping,
       rememberPeer,
       resetSessionUi,
       setPhaseSafe,
@@ -272,6 +338,7 @@ function ChatAppInner({
   const handleEndSession = async () => {
     const toId = peerIdRef.current;
     if (toId) {
+      await lobby.sendSignal({ type: "chat-typing-stop", toId });
       await lobby.sendSignal({ type: "chat-end", toId });
     }
     await resetSessionUi();
@@ -280,6 +347,8 @@ function ChatAppInner({
   const sendChatMessage = async (text: string) => {
     const toId = peerIdRef.current;
     if (!toId || !profile) return;
+    lastTypingSentAtRef.current = 0;
+    await lobby.sendSignal({ type: "chat-typing-stop", toId });
     const message: ChatMessage = {
       id: makeMessageId(),
       fromId: profile.id,
@@ -368,7 +437,9 @@ function ChatAppInner({
           myId={profile.id}
           roomId={roomId}
           messages={messages}
+          peerTyping={peerTyping}
           onSend={(text) => void sendChatMessage(text)}
+          onTypingChange={notifyTyping}
           onEndChat={() => void handleEndSession()}
         />
       ) : null}

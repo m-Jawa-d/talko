@@ -17,7 +17,9 @@ interface ActiveChatProps {
   myId: string;
   roomId?: RoomId;
   messages: ChatMessage[];
+  peerTyping?: boolean;
   onSend: (text: string) => void;
+  onTypingChange?: (isTyping: boolean) => void;
   onEndChat: () => void;
   onPromptChange?: (prompt: ConversationPrompt) => void;
   preview?: boolean;
@@ -31,7 +33,9 @@ export function ActiveChat({
   myId,
   roomId = "open",
   messages,
+  peerTyping = false,
   onSend,
+  onTypingChange,
   onEndChat,
   onPromptChange,
   preview = false,
@@ -40,6 +44,8 @@ export function ActiveChat({
   const [draft, setDraft] = useState("");
   const [seconds, setSeconds] = useState(preview ? 72 : 0);
   const listRef = useRef<HTMLDivElement>(null);
+  const idleTimerRef = useRef<number | null>(null);
+  const typingActiveRef = useRef(false);
   const promptPool = promptsForRoom(CONVERSATION_PROMPTS, roomId);
   const room = getRoom(roomId);
   const [prompt, setPrompt] = useState<ConversationPrompt>(() =>
@@ -47,8 +53,36 @@ export function ActiveChat({
   );
   const onPromptChangeRef = useRef(onPromptChange);
   onPromptChangeRef.current = onPromptChange;
+  const onTypingChangeRef = useRef(onTypingChange);
+  onTypingChangeRef.current = onTypingChange;
 
   const visible = preview && previewMessages ? previewMessages : messages;
+
+  const stopTyping = () => {
+    if (idleTimerRef.current) {
+      window.clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = null;
+    }
+    if (typingActiveRef.current) {
+      typingActiveRef.current = false;
+      onTypingChangeRef.current?.(false);
+    }
+  };
+
+  const bumpTyping = () => {
+    if (preview) return;
+    if (!typingActiveRef.current) {
+      typingActiveRef.current = true;
+    }
+    // Keep notifying so the peer's failsafe stays fresh while typing
+    onTypingChangeRef.current?.(true);
+    if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current);
+    idleTimerRef.current = window.setTimeout(() => {
+      idleTimerRef.current = null;
+      typingActiveRef.current = false;
+      onTypingChangeRef.current?.(false);
+    }, 1400);
+  };
 
   useEffect(() => {
     if (preview) return;
@@ -65,15 +99,30 @@ export function ActiveChat({
     const el = listRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [visible.length]);
+  }, [visible.length, peerTyping]);
 
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
+  useEffect(() => {
+    return () => {
+      if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current);
+      if (typingActiveRef.current) {
+        typingActiveRef.current = false;
+        onTypingChangeRef.current?.(false);
+      }
+    };
+  }, []);
+
+  const sendDraft = () => {
     if (preview) return;
     const text = draft.trim();
     if (!text) return;
+    stopTyping();
     onSend(text);
     setDraft("");
+  };
+
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    sendDraft();
   };
 
   const m = Math.floor(seconds / 60)
@@ -103,12 +152,22 @@ export function ActiveChat({
             {peerName}
           </h2>
           <p className="mt-0.5 text-sm text-stone-500 dark:text-stone-400">
-            {peerLearning ?? "Language"}
-            {peerLevel ? ` · ${peerLevel}` : ""}
-            <span className="mx-1.5 text-stone-300 dark:text-stone-600">·</span>
-            <span className="tabular-nums">
-              {m}:{s}
-            </span>
+            {peerTyping ? (
+              <span className="text-teal-700 dark:text-teal-300">
+                typing…
+              </span>
+            ) : (
+              <>
+                {peerLearning ?? "Language"}
+                {peerLevel ? ` · ${peerLevel}` : ""}
+                <span className="mx-1.5 text-stone-300 dark:text-stone-600">
+                  ·
+                </span>
+                <span className="tabular-nums">
+                  {m}:{s}
+                </span>
+              </>
+            )}
           </p>
         </div>
         <button
@@ -153,8 +212,8 @@ export function ActiveChat({
               <MessageCircle className="h-5 w-5" />
             </div>
             <p className="max-w-xs text-sm leading-relaxed text-stone-500 dark:text-stone-400">
-              Say hello, or start from the prompt above. This thread stays on
-              your device so you can reopen it later.
+              Say hello, or start from the prompt above. Messaging only works
+              during this live session.
             </p>
           </div>
         ) : (
@@ -180,6 +239,18 @@ export function ActiveChat({
             })}
           </ul>
         )}
+        {peerTyping && !preview ? (
+          <div className="flex justify-start py-2" aria-live="polite">
+            <div className="inline-flex items-center gap-2 rounded-2xl rounded-bl-md bg-[var(--page-surface)] px-3.5 py-2.5 text-sm text-stone-500 ring-1 ring-[var(--page-border)] dark:text-stone-400">
+              <span className="inline-flex items-center gap-1">
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-teal-500 [animation-delay:0ms]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-teal-500 [animation-delay:150ms]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-teal-500 [animation-delay:300ms]" />
+              </span>
+              <span>{peerName} is typing…</span>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <form
@@ -193,16 +264,19 @@ export function ActiveChat({
           <textarea
             id={preview ? undefined : "chat-draft"}
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value;
+              setDraft(value);
+              if (value.trim()) bumpTyping();
+              else stopTyping();
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                if (!preview && draft.trim()) {
-                  onSend(draft.trim());
-                  setDraft("");
-                }
+                sendDraft();
               }
             }}
+            onBlur={() => stopTyping()}
             rows={1}
             maxLength={500}
             placeholder="Type a message…"
