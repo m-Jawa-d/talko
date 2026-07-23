@@ -60,6 +60,7 @@ const steps = [
         <div className="w-[640px] rounded-2xl bg-[var(--page-bg)]">
           <PracticeLobby
             preview
+            mode="call"
             profile={demoProfile}
             roomId="travel"
             statusLabel="Online"

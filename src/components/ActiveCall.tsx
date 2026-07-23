@@ -1,21 +1,12 @@
 "use client";
 
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  FormEvent,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import {
-  MessageCircle,
   Mic,
   MicOff,
   PhoneOff,
   RefreshCw,
-  Send,
   WifiOff,
-  X,
 } from "lucide-react";
 import { AudioWaveform } from "@/components/AudioWaveform";
 import type { CallFailureReason } from "@/hooks/useWebRTC";
@@ -25,21 +16,18 @@ import {
   pickRandomPrompt,
 } from "@/lib/prompts";
 import { getRoom, promptsForRoom } from "@/lib/rooms";
-import { ChatMessage, RoomId } from "@/types";
+import { RoomId } from "@/types";
 
 interface ActiveCallProps {
   peerName: string;
   peerLevel?: string;
   peerLearning?: string;
-  myId?: string;
   roomId?: RoomId;
   localStream: MediaStream | null;
   remoteStream: MediaStream | null;
   connectionState: RTCPeerConnectionState;
   failureReason?: CallFailureReason | null;
   isMuted: boolean;
-  messages?: ChatMessage[];
-  onSendMessage?: (text: string) => void;
   onToggleMute: () => void;
   onEndCall: () => void;
   onPromptChange?: (prompt: ConversationPrompt) => void;
@@ -100,15 +88,12 @@ export function ActiveCall({
   peerName,
   peerLevel,
   peerLearning,
-  myId = "",
   roomId = "open",
   localStream,
   remoteStream,
   connectionState,
   failureReason = null,
   isMuted,
-  messages = [],
-  onSendMessage,
   onToggleMute,
   onEndCall,
   onPromptChange,
@@ -117,10 +102,7 @@ export function ActiveCall({
   previewPrompt,
 }: ActiveCallProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
-  const chatListRef = useRef<HTMLDivElement>(null);
   const [seconds, setSeconds] = useState(preview ? previewSeconds : 0);
-  const [chatOpen, setChatOpen] = useState(false);
-  const [draft, setDraft] = useState("");
   const promptPool = useMemo(
     () => promptsForRoom(CONVERSATION_PROMPTS, roomId),
     [roomId]
@@ -152,25 +134,9 @@ export function ActiveCall({
     return () => window.clearInterval(id);
   }, [preview]);
 
-  useEffect(() => {
-    if (!chatOpen) return;
-    const el = chatListRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [messages.length, chatOpen]);
-
   const nextPrompt = () => {
     if (preview) return;
     setPrompt((current) => pickRandomPrompt(current.id, promptPool));
-  };
-
-  const sendChat = (e?: FormEvent) => {
-    e?.preventDefault();
-    if (preview || !onSendMessage) return;
-    const text = draft.trim();
-    if (!text) return;
-    onSendMessage(text);
-    setDraft("");
   };
 
   const connected = connectionState === "connected";
@@ -182,8 +148,6 @@ export function ActiveCall({
       : "Connecting";
 
   const copy = failureCopy(failureReason);
-  const unreadHint =
-    !chatOpen && messages.some((m) => m.fromId !== myId);
 
   return (
     <div
@@ -337,26 +301,6 @@ export function ActiveCall({
                 <Mic className="h-5 w-5" />
               )}
             </button>
-            {onSendMessage || preview ? (
-              <button
-                type="button"
-                onClick={() => {
-                  if (!preview) setChatOpen((open) => !open);
-                }}
-                tabIndex={preview ? -1 : undefined}
-                aria-label={chatOpen ? "Close chat" : "Open chat"}
-                className={`relative flex h-14 w-14 items-center justify-center rounded-full ring-1 transition ${
-                  chatOpen
-                    ? "bg-teal-700 text-white ring-teal-700 dark:bg-teal-400 dark:text-stone-950 dark:ring-teal-400"
-                    : "bg-[var(--page-surface)] text-stone-700 ring-[var(--page-border)] hover:bg-stone-100 dark:text-stone-200 dark:hover:bg-white/10"
-                }`}
-              >
-                <MessageCircle className="h-5 w-5" />
-                {unreadHint ? (
-                  <span className="absolute right-3 top-3 h-2 w-2 rounded-full bg-teal-400 ring-2 ring-[var(--page-bg)]" />
-                ) : null}
-              </button>
-            ) : null}
             <button
               type="button"
               onClick={onEndCall}
@@ -369,83 +313,6 @@ export function ActiveCall({
           </footer>
         ) : null}
       </div>
-
-      {chatOpen && !preview && onSendMessage ? (
-        <div className="absolute inset-x-0 bottom-0 z-20 flex max-h-[55%] flex-col rounded-t-[1.75rem] bg-[var(--page-surface)] shadow-[0_-12px_40px_-20px_rgba(0,0,0,0.35)] ring-1 ring-[var(--page-border)] sm:inset-x-auto sm:bottom-6 sm:right-6 sm:max-h-[70%] sm:w-[22rem] sm:rounded-[1.5rem]">
-          <div className="flex items-center justify-between border-b border-[var(--page-border)] px-4 py-3">
-            <p className="text-sm font-semibold text-stone-800 dark:text-stone-100">
-              Chat with {peerName}
-            </p>
-            <button
-              type="button"
-              onClick={() => setChatOpen(false)}
-              className="rounded-full p-1.5 text-stone-400 transition hover:bg-stone-100 hover:text-stone-700 dark:hover:bg-white/10 dark:hover:text-stone-200"
-              aria-label="Close chat"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-          <div
-            ref={chatListRef}
-            className="min-h-0 flex-1 overflow-y-auto px-4 py-3"
-          >
-            {messages.length === 0 ? (
-              <p className="py-6 text-center text-sm text-stone-400">
-                Type while you talk — helpful for spelling or links.
-              </p>
-            ) : (
-              <ul className="flex flex-col gap-2">
-                {messages.map((msg) => {
-                  const mine = msg.fromId === myId;
-                  return (
-                    <li
-                      key={msg.id}
-                      className={`flex ${mine ? "justify-end" : "justify-start"}`}
-                    >
-                      <div
-                        className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
-                          mine
-                            ? "rounded-br-md bg-stone-900 text-white dark:bg-teal-400 dark:text-stone-950"
-                            : "rounded-bl-md bg-stone-100 text-stone-800 dark:bg-white/10 dark:text-stone-100"
-                        }`}
-                      >
-                        {msg.text}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-          <form
-            onSubmit={sendChat}
-            className="flex items-end gap-2 border-t border-[var(--page-border)] px-3 py-3"
-          >
-            <textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  sendChat();
-                }
-              }}
-              rows={1}
-              maxLength={500}
-              placeholder="Message…"
-              className="max-h-24 min-h-[2.5rem] flex-1 resize-none rounded-xl bg-[var(--page-bg)] px-3 py-2 text-sm text-stone-900 outline-none ring-1 ring-[var(--page-border)] placeholder:text-stone-400 focus:ring-teal-600/40 dark:text-stone-50"
-            />
-            <button
-              type="submit"
-              disabled={!draft.trim()}
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-stone-900 text-white transition hover:bg-teal-800 disabled:opacity-35 dark:bg-teal-400 dark:text-stone-950"
-              aria-label="Send"
-            >
-              <Send className="h-4 w-4" />
-            </button>
-          </form>
-        </div>
-      ) : null}
     </div>
   );
 }

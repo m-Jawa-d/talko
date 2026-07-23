@@ -1,34 +1,32 @@
 "use client";
 
 import Link from "next/link";
-import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActiveCall } from "@/components/ActiveCall";
-import { ActiveChat } from "@/components/ActiveChat";
 import { CallFeedback } from "@/components/CallFeedback";
-import { ConfigMissing } from "@/components/ConfigMissing";
 import { IncomingCall } from "@/components/IncomingCall";
 import { OutgoingInvite } from "@/components/OutgoingInvite";
+import {
+  PracticeBackLink,
+  PracticeChrome,
+  PracticeGate,
+} from "@/components/practice/PracticeGate";
 import { PracticeLobby } from "@/components/PracticeLobby";
-import { ProfileSetup } from "@/components/ProfileSetup";
-import { SiteFooter, SiteHeader, SiteNavPill } from "@/components/SiteHeader";
+import { SiteNavPill } from "@/components/SiteHeader";
 import { useLobby } from "@/hooks/useLobby";
-import { useProfile } from "@/hooks/useProfile";
 import { useWebRTC } from "@/hooks/useWebRTC";
-import { loadHistory, saveHistoryEntry } from "@/lib/history";
+import { loadCallHistory, saveCallHistoryEntry } from "@/lib/history";
 import { pickPartner } from "@/lib/levels";
 import { getRoom, loadRoomId, saveRoomId } from "@/lib/rooms";
-import { isSupabaseConfigured } from "@/lib/supabase";
 import {
   CallHistoryEntry,
   CallRatingTag,
-  ChatMessage,
   LanguageLevel,
   LearningLanguage,
   PresenceUser,
   RoomId,
-  SessionKind,
   SignalPayload,
+  UserProfile,
 } from "@/types";
 
 type Phase = "idle" | "looking" | "outgoing" | "incoming" | "active";
@@ -45,12 +43,13 @@ interface PendingFeedback {
 
 const MIN_FEEDBACK_SECONDS = 20;
 
-function makeMessageId() {
-  return crypto.randomUUID();
-}
-
-export function PracticeApp() {
-  const { profile, hydrated, updateProfile, resetProfile } = useProfile();
+function CallAppInner({
+  profile,
+  resetProfile,
+}: {
+  profile: UserProfile;
+  resetProfile: () => void;
+}) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [peer, setPeer] = useState<PresenceUser | null>(null);
   const [incoming, setIncoming] = useState<PresenceUser | null>(null);
@@ -60,15 +59,11 @@ export function PracticeApp() {
   const [pendingFeedback, setPendingFeedback] = useState<PendingFeedback | null>(
     null
   );
-  const [sessionKind, setSessionKind] = useState<SessionKind | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [configured] = useState(() => isSupabaseConfigured());
 
   const peerIdRef = useRef<string | null>(null);
   const lookingTimerRef = useRef<number | null>(null);
   const matchedRef = useRef(false);
   const phaseRef = useRef<Phase>("idle");
-  const sessionKindRef = useRef<SessionKind | null>(null);
   const callStartedAtRef = useRef<number | null>(null);
   const callConnectedRef = useRef(false);
   const lastPromptRef = useRef<string | undefined>(undefined);
@@ -81,7 +76,6 @@ export function PracticeApp() {
   } | null>(null);
 
   roomIdRef.current = roomId;
-  sessionKindRef.current = sessionKind;
 
   const sendSignalRef = useRef<
     (payload: Omit<SignalPayload, "from">) => Promise<void>
@@ -108,7 +102,7 @@ export function PracticeApp() {
   );
 
   useEffect(() => {
-    setHistory(loadHistory());
+    setHistory(loadCallHistory());
     setRoomId(loadRoomId());
   }, []);
 
@@ -164,9 +158,6 @@ export function PracticeApp() {
       callConnectedRef.current = false;
       lastPromptRef.current = undefined;
       peerSnapshotRef.current = null;
-      sessionKindRef.current = null;
-      setSessionKind(null);
-      setMessages([]);
       setPeer(null);
       setIncoming(null);
       setPhaseSafe("idle");
@@ -206,18 +197,11 @@ export function PracticeApp() {
 
   useEffect(() => {
     if (phase !== "active") return;
-    if (sessionKind === "chat") {
-      if (!callConnectedRef.current) {
-        callConnectedRef.current = true;
-        callStartedAtRef.current = Date.now();
-      }
-      return;
-    }
     if (webrtc.connectionState === "connected" && !callConnectedRef.current) {
       callConnectedRef.current = true;
       callStartedAtRef.current = Date.now();
     }
-  }, [phase, sessionKind, webrtc.connectionState]);
+  }, [phase, webrtc.connectionState]);
 
   const rememberPeer = useCallback((user: PresenceUser) => {
     peerSnapshotRef.current = {
@@ -228,24 +212,14 @@ export function PracticeApp() {
     };
   }, []);
 
-  const appendMessage = useCallback((msg: ChatMessage) => {
-    setMessages((prev) => {
-      if (prev.some((m) => m.id === msg.id)) return prev;
-      return [...prev, msg];
-    });
-  }, []);
-
   const onSignal = useCallback(
     async (signal: SignalPayload) => {
       switch (signal.type) {
-        case "call-invite":
-        case "chat-invite": {
-          const kind: SessionKind =
-            signal.type === "chat-invite" ? "chat" : "call";
+        case "call-invite": {
           const current = phaseRef.current;
           if (current !== "idle" && current !== "looking") {
             await sendSignalRef.current({
-              type: kind === "chat" ? "chat-decline" : "call-decline",
+              type: "call-decline",
               toId: signal.from.id,
             });
             return;
@@ -253,9 +227,6 @@ export function PracticeApp() {
           clearLookingTimer();
           matchedRef.current = true;
           rememberPeer(signal.from);
-          sessionKindRef.current = kind;
-          setSessionKind(kind);
-          setMessages([]);
           setIncoming(signal.from);
           setPeer(signal.from);
           peerIdRef.current = signal.from.id;
@@ -263,11 +234,17 @@ export function PracticeApp() {
           await setPresenceRef.current("Busy");
           break;
         }
+        case "chat-invite": {
+          // Peer is on Call mode — decline so they aren't left waiting
+          await sendSignalRef.current({
+            type: "chat-decline",
+            toId: signal.from.id,
+          });
+          break;
+        }
         case "call-accept": {
           peerIdRef.current = signal.from.id;
           rememberPeer(signal.from);
-          sessionKindRef.current = "call";
-          setSessionKind("call");
           setPeer(signal.from);
           setPhaseSafe("active");
           setBanner(null);
@@ -292,56 +269,23 @@ export function PracticeApp() {
           }
           break;
         }
-        case "chat-accept": {
-          peerIdRef.current = signal.from.id;
-          rememberPeer(signal.from);
-          sessionKindRef.current = "chat";
-          setSessionKind("chat");
-          setPeer(signal.from);
-          setPhaseSafe("active");
-          setBanner(null);
-          callConnectedRef.current = true;
-          callStartedAtRef.current = Date.now();
-          await setPresenceRef.current("In Chat");
-          break;
-        }
-        case "call-decline":
-        case "chat-decline": {
-          const label = signal.type === "chat-decline" ? "chat" : "call";
-          setBanner(`${signal.from.displayName} declined the ${label}.`);
+        case "call-decline": {
+          setBanner(`${signal.from.displayName} declined the call.`);
           await resetSessionUi({ offerFeedback: false });
           break;
         }
-        case "call-end":
-        case "chat-end": {
+        case "call-end": {
           const wasActive = phaseRef.current === "active";
           const feedback = await resetSessionUi();
           if (wasActive && !feedback) {
-            setBanner(
-              signal.type === "chat-end"
-                ? "The other person left the chat."
-                : "The other person left the call."
-            );
+            setBanner("The other person left the call.");
           }
-          break;
-        }
-        case "chat-message": {
-          if (!signal.text || !signal.messageId) return;
-          if (signal.from.id !== peerIdRef.current) return;
-          appendMessage({
-            id: signal.messageId,
-            fromId: signal.from.id,
-            text: signal.text,
-            sentAt: Date.now(),
-          });
           break;
         }
         case "webrtc-offer": {
           if (!signal.sdp) return;
           peerIdRef.current = signal.from.id;
           rememberPeer(signal.from);
-          sessionKindRef.current = "call";
-          setSessionKind("call");
           setPhaseSafe("active");
           await setPresenceRef.current("In Call");
           try {
@@ -374,21 +318,17 @@ export function PracticeApp() {
           await handleIceRef.current(signal.candidate);
           break;
         }
+        default:
+          break;
       }
     },
-    [
-      appendMessage,
-      clearLookingTimer,
-      rememberPeer,
-      resetSessionUi,
-      setPhaseSafe,
-    ]
+    [clearLookingTimer, rememberPeer, resetSessionUi, setPhaseSafe]
   );
 
   const lobby = useLobby({
     profile,
     roomId,
-    enabled: Boolean(profile) && configured,
+    enabled: true,
     onSignal,
   });
 
@@ -401,9 +341,6 @@ export function PracticeApp() {
     matchedRef.current = true;
     peerIdRef.current = user.id;
     rememberPeer(user);
-    sessionKindRef.current = "call";
-    setSessionKind("call");
-    setMessages([]);
     setPeer(user);
     setPhaseSafe("outgoing");
     setBanner(`Calling ${user.displayName}…`);
@@ -411,27 +348,10 @@ export function PracticeApp() {
     await lobby.sendSignal({ type: "call-invite", toId: user.id });
   };
 
-  const startChat = async (user: PresenceUser) => {
-    if (phase !== "idle" && phase !== "looking") return;
-    clearLookingTimer();
-    matchedRef.current = true;
-    peerIdRef.current = user.id;
-    rememberPeer(user);
-    sessionKindRef.current = "chat";
-    setSessionKind("chat");
-    setMessages([]);
-    setPeer(user);
-    setPhaseSafe("outgoing");
-    setBanner(`Chatting with ${user.displayName}…`);
-    await lobby.setPresenceStatus("Busy");
-    await lobby.sendSignal({ type: "chat-invite", toId: user.id });
-  };
-
   const tryMatch = useCallback(async () => {
     if (matchedRef.current) return;
-    const meId = profile?.id;
-    const myLevel = profile?.level;
-    if (!meId || !myLevel) return;
+    const meId = profile.id;
+    const myLevel = profile.level;
 
     const candidates = lobby.users.filter(
       (u) => u.status === "Looking" || u.status === "Online"
@@ -443,9 +363,6 @@ export function PracticeApp() {
     clearLookingTimer();
     peerIdRef.current = partner.id;
     rememberPeer(partner);
-    sessionKindRef.current = "call";
-    setSessionKind("call");
-    setMessages([]);
     setPeer(partner);
     setPhaseSafe("outgoing");
     setBanner(`Matched with ${partner.displayName}…`);
@@ -453,8 +370,8 @@ export function PracticeApp() {
     await lobby.sendSignal({ type: "call-invite", toId: partner.id });
   }, [
     lobby,
-    profile?.id,
-    profile?.level,
+    profile.id,
+    profile.level,
     clearLookingTimer,
     rememberPeer,
     setPhaseSafe,
@@ -493,40 +410,24 @@ export function PracticeApp() {
 
   const handleAccept = async () => {
     if (!incoming) return;
-    const kind = sessionKindRef.current ?? "call";
     rememberPeer(incoming);
     setIncoming(null);
     setPhaseSafe("active");
-    if (kind === "chat") {
-      callConnectedRef.current = true;
-      callStartedAtRef.current = Date.now();
-      await lobby.setPresenceStatus("In Chat");
-      await lobby.sendSignal({ type: "chat-accept", toId: incoming.id });
-      return;
-    }
     await lobby.setPresenceStatus("In Call");
     await lobby.sendSignal({ type: "call-accept", toId: incoming.id });
   };
 
   const handleDecline = async () => {
     if (!incoming) return;
-    const kind = sessionKindRef.current ?? "call";
-    await lobby.sendSignal({
-      type: kind === "chat" ? "chat-decline" : "call-decline",
-      toId: incoming.id,
-    });
+    await lobby.sendSignal({ type: "call-decline", toId: incoming.id });
     await resetSessionUi({ offerFeedback: false });
   };
 
   const handleEndSession = async () => {
     const toId = peerIdRef.current;
-    const kind = sessionKindRef.current ?? "call";
-    const failed = kind === "call" && Boolean(webrtc.failureReason);
+    const failed = Boolean(webrtc.failureReason);
     if (toId) {
-      await lobby.sendSignal({
-        type: kind === "chat" ? "chat-end" : "call-end",
-        toId,
-      });
+      await lobby.sendSignal({ type: "call-end", toId });
     }
     await resetSessionUi({ offerFeedback: !failed });
     if (failed) {
@@ -536,30 +437,12 @@ export function PracticeApp() {
     }
   };
 
-  const sendChatMessage = async (text: string) => {
-    const toId = peerIdRef.current;
-    if (!toId || !profile) return;
-    const message: ChatMessage = {
-      id: makeMessageId(),
-      fromId: profile.id,
-      text,
-      sentAt: Date.now(),
-    };
-    appendMessage(message);
-    await lobby.sendSignal({
-      type: "chat-message",
-      toId,
-      text: message.text,
-      messageId: message.id,
-    });
-  };
-
   const persistFeedback = (input: {
     ratings: CallRatingTag[];
     note: string;
   }) => {
     if (!pendingFeedback) return;
-    const next = saveHistoryEntry({
+    const next = saveCallHistoryEntry({
       peerId: pendingFeedback.peerId,
       peerName: pendingFeedback.peerName,
       peerLevel: pendingFeedback.peerLevel,
@@ -575,7 +458,7 @@ export function PracticeApp() {
 
   const skipFeedback = () => {
     if (!pendingFeedback) return;
-    const next = saveHistoryEntry({
+    const next = saveCallHistoryEntry({
       peerId: pendingFeedback.peerId,
       peerName: pendingFeedback.peerName,
       peerLevel: pendingFeedback.peerLevel,
@@ -588,42 +471,6 @@ export function PracticeApp() {
     setPendingFeedback(null);
   };
 
-  if (!hydrated) {
-    return (
-      <div className="flex min-h-[100dvh] items-center justify-center text-stone-400">
-        <Loader2 className="h-5 w-5 animate-spin" />
-      </div>
-    );
-  }
-
-  if (!configured) {
-    return (
-      <div className="flex min-h-[100dvh] flex-col bg-[var(--page-bg)]">
-        <div className="mx-auto w-full max-w-6xl flex-1 px-6 pt-7 sm:px-10 lg:px-12">
-          <SiteHeader action={<SiteNavPill href="/">Home</SiteNavPill>} />
-          <div className="flex items-center py-20">
-            <ConfigMissing />
-          </div>
-        </div>
-        <SiteFooter />
-      </div>
-    );
-  }
-
-  if (!profile) {
-    return (
-      <div className="flex min-h-[100dvh] flex-col bg-[var(--page-bg)]">
-        <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-6 pt-7 sm:px-10 lg:px-12">
-          <SiteHeader action={<SiteNavPill href="/">Home</SiteNavPill>} />
-          <div className="flex flex-1 items-center py-16">
-            <ProfileSetup onSave={updateProfile} />
-          </div>
-        </div>
-        <SiteFooter />
-      </div>
-    );
-  }
-
   const statusLabel = !lobby.ready
     ? "Connecting"
     : lobby.myStatus === "Looking"
@@ -633,66 +480,54 @@ export function PracticeApp() {
         : lobby.myStatus;
 
   return (
-    <div className="relative flex min-h-[100dvh] flex-col bg-[var(--page-bg)]">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -left-24 top-[-10%] h-[55vh] w-[55vh] rounded-full bg-teal-400/15 blur-3xl animate-[call-orb_16s_ease-in-out_infinite_alternate] dark:bg-teal-400/10" />
-        <div className="absolute -right-20 bottom-[-8%] h-[45vh] w-[45vh] rounded-full bg-sky-400/10 blur-3xl animate-[call-orb_18s_ease-in-out_infinite_alternate-reverse] dark:bg-sky-400/8" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_30%,var(--page-bg)_78%)]" />
-      </div>
-
-      <div className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 flex-col px-6 pt-7 sm:px-10 lg:px-12">
-        <SiteHeader
-          action={
-            <>
-              <Link
-                href="/guide"
-                className="hidden text-sm font-medium text-stone-600 transition hover:text-stone-900 sm:inline dark:text-stone-400 dark:hover:text-stone-100"
-              >
-                Guide
-              </Link>
-              <SiteNavPill
-                onClick={() => {
-                  void resetSessionUi({ offerFeedback: false });
-                  resetProfile();
-                }}
-              >
-                Edit profile
-              </SiteNavPill>
-            </>
+    <>
+      <PracticeChrome
+        action={
+          <>
+            <PracticeBackLink />
+            <Link
+              href="/guide"
+              className="hidden text-sm font-medium text-stone-600 transition hover:text-stone-900 sm:inline dark:text-stone-400 dark:hover:text-stone-100"
+            >
+              Guide
+            </Link>
+            <SiteNavPill
+              onClick={() => {
+                void resetSessionUi({ offerFeedback: false });
+                resetProfile();
+              }}
+            >
+              Edit profile
+            </SiteNavPill>
+          </>
+        }
+      >
+        <PracticeLobby
+          mode="call"
+          profile={profile}
+          roomId={roomId}
+          statusLabel={statusLabel}
+          ready={lobby.ready}
+          phase={
+            phase === "looking" || phase === "outgoing" ? phase : "idle"
           }
+          users={lobby.users}
+          callHistory={history}
+          error={lobby.error}
+          banner={banner}
+          outgoingUserId={phase === "outgoing" ? peer?.id : null}
+          onRoomChange={handleRoomChange}
+          onFindPartner={() => void handleFindPartner()}
+          onCancelLooking={() => void cancelLooking()}
+          onCancelOutgoing={() => void handleEndSession()}
+          onConnect={(user) => void startCall(user)}
         />
+      </PracticeChrome>
 
-        <main className="flex flex-1 flex-col py-8 sm:py-12">
-          <PracticeLobby
-            profile={profile}
-            roomId={roomId}
-            statusLabel={statusLabel}
-            ready={lobby.ready}
-            phase={
-              phase === "looking" || phase === "outgoing" ? phase : "idle"
-            }
-            users={lobby.users}
-            history={history}
-            error={lobby.error}
-            banner={banner}
-            outgoingUserId={phase === "outgoing" ? peer?.id : null}
-            outgoingKind={phase === "outgoing" ? sessionKind : null}
-            onRoomChange={handleRoomChange}
-            onFindPartner={() => void handleFindPartner()}
-            onCancelLooking={() => void cancelLooking()}
-            onCancelOutgoing={() => void handleEndSession()}
-            onCall={(user) => void startCall(user)}
-            onChat={(user) => void startChat(user)}
-          />
-        </main>
-      </div>
-
-      <SiteFooter />
-
-      {phase === "outgoing" && peer && sessionKind ? (
+      {phase === "outgoing" && peer ? (
         <OutgoingInvite
           peer={peer}
-          kind={sessionKind}
+          kind="call"
           onCancel={() => void handleEndSession()}
         />
       ) : null}
@@ -700,42 +535,23 @@ export function PracticeApp() {
       {phase === "incoming" && incoming ? (
         <IncomingCall
           caller={incoming}
-          kind={sessionKind ?? "call"}
+          kind="call"
           onAccept={() => void handleAccept()}
           onDecline={() => void handleDecline()}
         />
       ) : null}
 
-      {phase === "active" && peer && sessionKind === "chat" ? (
-        <ActiveChat
-          peerName={peer.displayName}
-          peerLevel={peer.level}
-          peerLearning={peer.learning}
-          myId={profile.id}
-          roomId={roomId}
-          messages={messages}
-          onSend={(text) => void sendChatMessage(text)}
-          onEndChat={() => void handleEndSession()}
-          onPromptChange={(p) => {
-            lastPromptRef.current = p.text;
-          }}
-        />
-      ) : null}
-
-      {phase === "active" && peer && sessionKind === "call" ? (
+      {phase === "active" && peer ? (
         <ActiveCall
           peerName={peer.displayName}
           peerLevel={peer.level}
           peerLearning={peer.learning}
-          myId={profile.id}
           roomId={roomId}
           localStream={webrtc.localStream}
           remoteStream={webrtc.remoteStream}
           connectionState={webrtc.connectionState}
           failureReason={webrtc.failureReason}
           isMuted={webrtc.isMuted}
-          messages={messages}
-          onSendMessage={(text) => void sendChatMessage(text)}
           onToggleMute={webrtc.toggleMute}
           onEndCall={() => void handleEndSession()}
           onPromptChange={(p) => {
@@ -754,6 +570,16 @@ export function PracticeApp() {
           onSkip={skipFeedback}
         />
       ) : null}
-    </div>
+    </>
+  );
+}
+
+export function CallApp() {
+  return (
+    <PracticeGate>
+      {({ profile, resetProfile }) => (
+        <CallAppInner profile={profile} resetProfile={resetProfile} />
+      )}
+    </PracticeGate>
   );
 }

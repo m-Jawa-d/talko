@@ -153,8 +153,8 @@ export function ActiveChat({
               <MessageCircle className="h-5 w-5" />
             </div>
             <p className="max-w-xs text-sm leading-relaxed text-stone-500 dark:text-stone-400">
-              Say hello, or start from the prompt above. Messages stay between
-              you two — nothing is stored on a server.
+              Say hello, or start from the prompt above. This thread stays on
+              your device so you can reopen it later.
             </p>
           </div>
         ) : (

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ThemeToggle } from "@/components/ThemeToggle";
+import { Settings } from "lucide-react";
 
 export { SiteFooter } from "@/components/SiteFooter";
 
@@ -20,7 +20,13 @@ export function SiteHeader({ action }: SiteHeaderProps) {
       </Link>
       <div className="flex items-center gap-2 sm:gap-3">
         {action}
-        <ThemeToggle />
+        <Link
+          href="/settings"
+          aria-label="Settings"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-stone-900/15 bg-white/70 text-stone-700 backdrop-blur-sm transition hover:border-stone-900/30 hover:bg-white dark:border-white/15 dark:bg-white/5 dark:text-stone-200 dark:hover:border-white/25 dark:hover:bg-white/10"
+        >
+          <Settings className="h-4 w-4" />
+        </Link>
       </div>
     </header>
   );

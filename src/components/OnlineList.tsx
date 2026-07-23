@@ -2,17 +2,21 @@
 
 import { Loader2, MessageCircle, Phone, Users, X } from "lucide-react";
 import { isNearLevel } from "@/lib/levels";
-import { LanguageLevel, PresenceStatus, PresenceUser, SessionKind } from "@/types";
+import {
+  LanguageLevel,
+  PresenceStatus,
+  PresenceUser,
+  PracticeMode,
+} from "@/types";
 
 interface OnlineListProps {
   users: PresenceUser[];
-  onCall: (user: PresenceUser) => void;
-  onChat?: (user: PresenceUser) => void;
+  mode: PracticeMode;
+  onConnect: (user: PresenceUser) => void;
   disabled?: boolean;
   connecting?: boolean;
   myLevel?: LanguageLevel;
   outgoingUserId?: string | null;
-  outgoingKind?: SessionKind | null;
   onCancelOutgoing?: () => void;
 }
 
@@ -57,15 +61,15 @@ function avatarTone(seed: string) {
 
 export function OnlineList({
   users,
-  onCall,
-  onChat,
+  mode,
+  onConnect,
   disabled,
   connecting,
   myLevel,
   outgoingUserId,
-  outgoingKind,
   onCancelOutgoing,
 }: OnlineListProps) {
+  const isChat = mode === "chat";
   const sorted = [...users].sort((a, b) => {
     if (!myLevel) return 0;
     const aNear = isNearLevel(myLevel, a.level) ? 0 : 1;
@@ -101,8 +105,9 @@ export function OnlineList({
               You’re first in this topic
             </p>
             <p className="mt-1 max-w-sm text-sm leading-relaxed text-stone-500 dark:text-stone-400">
-              Stay here and use Find a partner, or invite a friend to join this
-              room.
+              {isChat
+                ? "Stay here or invite a friend to join this room."
+                : "Stay here and use Find a partner, or invite a friend to join this room."}
             </p>
           </div>
         </div>
@@ -117,8 +122,7 @@ export function OnlineList({
           user.status === "Online" || user.status === "Looking";
         const near = myLevel ? isNearLevel(myLevel, user.level) : false;
         const isOutgoingTarget = outgoingUserId === user.id;
-        const connectingLabel =
-          outgoingKind === "chat" ? "Connecting…" : "Calling…";
+        const connectingLabel = isChat ? "Connecting…" : "Calling…";
 
         return (
           <li
@@ -178,32 +182,24 @@ export function OnlineList({
                   Cancel
                 </button>
               ) : (
-                <div className="relative mt-3 flex gap-1.5">
-                  <button
-                    type="button"
-                    disabled={!canConnect || disabled}
-                    onClick={() => onCall(user)}
-                    aria-label={`Call ${user.displayName}`}
-                    className="inline-flex min-w-0 flex-1 items-center justify-center gap-1 rounded-full bg-stone-900 px-2 py-2 text-xs font-semibold text-white transition group-hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-30 dark:bg-teal-400 dark:text-stone-950 dark:group-hover:bg-teal-300"
-                  >
-                    <Phone className="h-3.5 w-3.5 shrink-0" />
-                    <span className="hidden truncate @[8.75rem]:inline">
-                      Call
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!canConnect || disabled || !onChat}
-                    onClick={() => onChat?.(user)}
-                    aria-label={`Chat with ${user.displayName}`}
-                    className="inline-flex min-w-0 flex-1 items-center justify-center gap-1 rounded-full bg-stone-100 px-2 py-2 text-xs font-semibold text-stone-700 transition hover:bg-stone-200 disabled:cursor-not-allowed disabled:opacity-30 dark:bg-white/10 dark:text-stone-200 dark:hover:bg-white/15"
-                  >
+                <button
+                  type="button"
+                  disabled={!canConnect || disabled}
+                  onClick={() => onConnect(user)}
+                  aria-label={
+                    isChat
+                      ? `Chat with ${user.displayName}`
+                      : `Call ${user.displayName}`
+                  }
+                  className="relative mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-stone-900 py-2 text-xs font-semibold text-white transition group-hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-30 dark:bg-teal-400 dark:text-stone-950 dark:group-hover:bg-teal-300"
+                >
+                  {isChat ? (
                     <MessageCircle className="h-3.5 w-3.5 shrink-0" />
-                    <span className="hidden truncate @[8.75rem]:inline">
-                      Chat
-                    </span>
-                  </button>
-                </div>
+                  ) : (
+                    <Phone className="h-3.5 w-3.5 shrink-0" />
+                  )}
+                  {isChat ? "Chat" : "Call"}
+                </button>
               )}
             </div>
           </li>

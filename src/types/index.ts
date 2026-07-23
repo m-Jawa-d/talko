@@ -89,5 +89,20 @@ export interface CallHistoryEntry {
   roomId?: RoomId;
 }
 
+/** Persisted Messenger-style conversation with one peer */
+export interface ChatThread {
+  peerId: string;
+  peerName: string;
+  peerLevel: LanguageLevel;
+  peerLearning: LearningLanguage;
+  messages: ChatMessage[];
+  updatedAt: string;
+}
+
+export type PracticeMode = "call" | "chat";
+
 export const PROFILE_STORAGE_KEY = "talko.profile.v1";
+/** @deprecated use CALL_HISTORY_STORAGE_KEY */
 export const HISTORY_STORAGE_KEY = "talko.history.v1";
+export const CALL_HISTORY_STORAGE_KEY = "talko.callHistory.v1";
+export const CHAT_THREADS_STORAGE_KEY = "talko.chatThreads.v1";

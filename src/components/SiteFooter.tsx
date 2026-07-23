@@ -4,6 +4,7 @@ import Link from "next/link";
 const productLinks = [
   { href: "/practice", label: "Start practicing" },
   { href: "/guide", label: "How it works" },
+  { href: "/settings", label: "Settings" },
 ] as const;
 
 const principles = [

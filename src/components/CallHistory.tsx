@@ -50,7 +50,7 @@ export function CallHistory({ entries, preview = false }: CallHistoryProps) {
   return (
     <details className="group mt-10 rounded-[1.5rem] bg-[var(--page-surface)]/50 ring-1 ring-[var(--page-border)] open:bg-[var(--page-surface)]/80">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 text-sm text-stone-500 transition hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200 [&::-webkit-details-marker]:hidden">
-        <span className="font-medium">Recent sessions</span>
+        <span className="font-medium">Recent calls</span>
         <span className="inline-flex items-center gap-2 text-stone-400">
           <span className="tabular-nums">
             {entries.length || (preview ? 1 : 0)}

@@ -1,6 +1,8 @@
 "use client";
 
 import { MessageCircle, Phone, PhoneOff, X } from "lucide-react";
+import { useIncomingRing } from "@/hooks/useIncomingRing";
+import { useSettings } from "@/hooks/useSettings";
 import { PresenceUser, SessionKind } from "@/types";
 
 interface IncomingCallProps {
@@ -20,6 +22,13 @@ export function IncomingCall({
   preview = false,
 }: IncomingCallProps) {
   const isChat = kind === "chat";
+  const { notificationsEnabled } = useSettings();
+
+  useIncomingRing({
+    active: !preview && notificationsEnabled,
+    title: isChat ? "Incoming chat · Talko" : "Incoming call · Talko",
+    body: `${caller.displayName} wants to practice`,
+  });
 
   return (
     <div
