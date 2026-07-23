@@ -1,38 +1,45 @@
 # Talko
 
-Practice **any language** in live **1-on-1 audio calls or text chat** with other learners. No accounts, no bots, no recordings — pick a language, join a room, find a partner, and speak or type.
+Practice **any language** with real people — live **1-on-1 audio calls** or **text chat**. No accounts, no bots, no recordings.
 
-**Stack:** Next.js 15 (App Router) · Supabase Realtime (presence + signaling) · WebRTC P2P audio · Tailwind CSS · Vercel-ready
+**Live:** [https://talkos.vercel.app/](https://talkos.vercel.app/)
+
+**Stack:** Next.js 15 · React 19 · Supabase Realtime (presence + signaling) · WebRTC P2P audio · Tailwind CSS 4 · Vercel
 
 ---
 
 ## Features
 
-- **Lightweight profile** — display name, language to practice, and CEFR level (A1–C2), saved on the device
+- **No account** — display name, language, and CEFR level (A1–C2) saved on this device
+- **Call or chat** — choose a mode at `/practice`, then join a topic room
 - **Topic rooms** — Open chat, Daily life, Travel, Work, Opinions, Hobbies, Culture, Tech (scoped per language)
-- **Call or chat** — start a live audio call, or practice by text only (same invite / accept flow)
-- **In-call messaging** — type while you talk over the same Realtime channel
-- **Find a partner** — smart matching prefers people who are looking and nearby in level
+- **Find a partner** — call mode only; prefers people who are Looking and nearby in level
+- **Direct invite** — call or message someone already online in the lobby
+- **WebRTC audio** — mute, timer, connection status; peer-to-peer with optional TURN
 - **Conversation prompts** — optional icebreakers filtered by the room you joined
-- **Mute / end call** — peer-to-peer audio with connection status feedback
-- **Call history & ratings** — local notes after longer sessions (helpful / clear / kind)
-- **Guide** — walkthrough of the flow at [`/guide`](./src/app/guide/page.tsx)
+- **Chat threads** — Messenger-style inbox with local history; typing indicators
+- **Call history & ratings** — after longer calls: helpful / clear / kind + note (local only)
+- **Settings** — light/dark theme; optional ringtone, vibration, and notification for incoming invites
+- **Guide** — interactive walkthrough at [`/guide`](./src/app/guide/page.tsx)
 
-Nothing is stored on a server except ephemeral Realtime presence and call signaling. Profile, room choice, and history live in `localStorage`.
+Nothing is stored on a server except ephemeral Realtime presence and signaling. Profile, room, history, chat threads, and settings live in `localStorage`.
 
 ---
 
 ## How it works
 
 ```
-Landing → Profile → Room lobby → Match or Call → Accept → WebRTC audio
+Landing → Practice (Call | Chat) → Profile (if needed) → Room lobby → Invite / Match → Speak or type
 ```
 
-1. You open **Practice** and set a name, language, and level.
-2. You join a **room**. Each room × language is its own Supabase Realtime channel so you only see people practicing the same language in the same topic.
-3. **Find a partner** picks someone (preferring `Looking` + similar CEFR), or you tap **Call** on a name in the list.
-4. The other person accepts. WebRTC offer / answer / ICE candidates travel over Supabase **Broadcast**.
-5. Audio streams peer-to-peer. After the call, optional feedback is saved locally.
+1. Open **Practice** and pick **Call** or **Chat**.
+2. Set a name, language, and level (once per device).
+3. Join a **room**. Each room × language is its own Supabase Realtime channel.
+4. **Call mode:** tap **Call** on someone, or **Find a partner**. Audio connects over WebRTC after they accept.
+5. **Chat mode:** message someone from the list (or an existing thread). No auto-match.
+6. Prompts, mute (calls), and end session work in-session. Ratings save locally after connected calls (~20s+).
+
+Cross-mode invites (e.g. a call while you’re in chat) are auto-declined.
 
 No database tables are required. Talko uses Realtime **Presence** + **Broadcast** only.
 
@@ -57,9 +64,9 @@ No database tables are required. Talko uses Realtime **Presence** + **Broadcast*
 2. Open **Project Settings → API**
 3. Copy **Project URL** and **anon public** key
 
-Confirm Realtime is enabled (default on new projects). If calls never connect, that is the first thing to check.
+Confirm Realtime is enabled (default on new projects). If lobbies stay empty or calls never connect, check that first.
 
-### 2. TURN (recommended)
+### 2. TURN (recommended for audio)
 
 STUN alone often fails across different Wi‑Fi networks or cities. Talko expects a [Metered](https://www.metered.ca/tools/openrelay/) (or compatible) TURN credential so peers can relay when direct P2P is blocked.
 
@@ -84,6 +91,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 NEXT_PUBLIC_TURN_USERNAME=...
 NEXT_PUBLIC_TURN_CREDENTIAL=...
 NEXT_PUBLIC_TURN_ICE_SERVERS=[{"urls":"stun:..."},{"urls":"turn:...","username":"...","credential":"..."}]
+
+# Optional — canonical site URL for metadata (defaults work on Vercel)
+# NEXT_PUBLIC_SITE_URL=https://talkos.vercel.app
 ```
 
 See [`.env.example`](./.env.example) for optional Metered API-key fetch.
@@ -97,18 +107,20 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) → **Start practicing**.
 
-Test with **two browser tabs** (or two devices) and different display names. Allow microphone access when prompted.
+Test with **two browser tabs** (or two devices) and different display names. Allow microphone access when prompted for calls.
 
-| Script        | Purpose              |
-|---------------|----------------------|
-| `npm run dev` | Local development    |
-| `npm run build` | Production build   |
+| Script          | Purpose                |
+|-----------------|------------------------|
+| `npm run dev`   | Local development      |
+| `npm run build` | Production build       |
 | `npm run start` | Serve production build |
-| `npm run lint`  | ESLint             |
+| `npm run lint`  | ESLint                 |
 
 ---
 
 ## Deploy on Vercel
+
+**Production:** [https://talkos.vercel.app/](https://talkos.vercel.app/)
 
 1. Push the repo to GitHub
 2. Import the project in [Vercel](https://vercel.com)
@@ -124,31 +136,39 @@ No separate signaling server is needed — Supabase Realtime handles presence an
 ```
 src/
   app/
-    page.tsx                 Landing
-    practice/page.tsx        Practice room (client app)
-    guide/page.tsx           How-it-works walkthrough
+    page.tsx                     Landing
+    guide/page.tsx               How-it-works walkthrough
+    settings/page.tsx            Theme + incoming alerts
+    practice/page.tsx            Mode picker (Call | Chat)
+    practice/call/page.tsx       Audio practice
+    practice/chat/page.tsx       Text practice
   components/
-    PracticeApp.tsx          Call / match orchestration
-    PracticeLobby.tsx        Online list + find partner
-    ActiveCall.tsx           In-call UI, prompts, mute
-    RoomPicker.tsx           Topic rooms
-    CallHistory.tsx          Local history
-    CallFeedback.tsx         Post-call ratings
-    LandingPage.tsx          Marketing home
-    GuidePage.tsx            Interactive guide
+    LandingPage.tsx              Marketing home
+    GuidePage.tsx                Interactive guide
+    SettingsPage.tsx             Preferences
+    practice/ModePicker.tsx      Call vs Chat
+    practice/PracticeGate.tsx    Config + profile gate
+    CallApp.tsx / ChatApp.tsx    Mode orchestration
+    PracticeLobby.tsx            Rooms + online list
+    ActiveCall.tsx / ActiveChat.tsx
+    IncomingCall.tsx / OutgoingInvite.tsx
+    ChatInbox.tsx                Local chat threads
+    CallHistory.tsx / CallFeedback.tsx
+    RoomPicker.tsx / OnlineList.tsx
+    SiteHeader.tsx / SiteFooter.tsx
+    ThemeProvider.tsx
   hooks/
-    useLobby.ts              Presence + call signaling
-    useWebRTC.ts             RTCPeerConnection + mic
-    useProfile.ts            localStorage profile
+    useLobby.ts                  Presence + invite signaling
+    useWebRTC.ts                 RTCPeerConnection + mic
+    useProfile.ts                localStorage profile
+    useSettings.ts               Theme + notifications
+    useIncomingRing.ts           Ringtone / vibrate / notify
   lib/
-    rooms.ts                 Room definitions + language-scoped channels
-    languages.ts             Supported practice languages
-    levels.ts                CEFR distance + match pick
-    prompts.ts               Conversation icebreakers
-    history.ts               Call history persistence
-    iceServers.ts            STUN / TURN config
-    supabase.ts              Client + config check
-  types/index.ts             Shared types
+    rooms.ts                     Rooms + language-scoped channels
+    languages.ts / levels.ts / prompts.ts
+    history.ts / chatHistory.ts  Local persistence
+    iceServers.ts / supabase.ts / settings.ts / profile.ts
+  types/index.ts
 ```
 
 ---
@@ -158,8 +178,8 @@ src/
 - **No accounts** — identity is a random id + display name on the device
 - **No call recordings** — audio is peer-to-peer; Talko does not store media
 - **Ephemeral lobby** — when you leave, you disappear from presence
-- **Local history** — ratings and notes stay in the browser (`talko.history.v1`)
-- **Browser support** — needs a modern browser with WebRTC and mic permission
+- **Local data** — call history, chat threads, theme, and alerts stay in the browser
+- **Browser support** — needs a modern browser; calls need WebRTC and mic permission
 - **NAT / firewalls** — without TURN, some cross-network calls will fail to connect
 
 ---
@@ -169,10 +189,11 @@ src/
 | Problem | What to try |
 |---------|-------------|
 | “Config missing” screen | Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`, restart `npm run dev` |
-| Empty lobby / never see others | Same room; Realtime enabled; both tabs on the same deployed URL or `localhost` |
+| Empty lobby / never see others | Same room **and** same mode URL; Realtime enabled; both on the same deployed host or `localhost` |
 | Call rings but no audio | Mic permission; check TURN env vars for cross-network calls |
 | `NEXT_PUBLIC_TURN_ICE_SERVERS` ignored | Must be **one-line valid JSON** with quoted keys |
-| Match finds nobody | Need at least one other person Online/Looking in the same room |
+| Match finds nobody | Call mode only; need at least one other person Online/Looking in the same room |
+| No ringtone / notification | Enable alerts in **Settings** (off by default) |
 
 ---
 
