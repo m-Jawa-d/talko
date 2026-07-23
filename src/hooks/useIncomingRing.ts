@@ -65,12 +65,13 @@ function showIncomingNotification(title: string, body: string) {
   if (!document.hidden) return;
 
   try {
-    const n = new Notification(title, {
+    const options: NotificationOptions & { renotify?: boolean } = {
       body,
       tag: "talko-incoming",
       renotify: true,
       silent: false,
-    });
+    };
+    const n = new Notification(title, options);
     n.onclick = () => {
       window.focus();
       n.close();
